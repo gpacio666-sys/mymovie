@@ -94,7 +94,9 @@ textarea{width:100%;margin-top:8px;padding:12px;border-radius:12px;border:2px so
       <button class="btn ghost" id="bImp">Importa backup</button>
       <input type="file" id="fImp" accept="application/json" class="hide">
     </div>
-  <div class="meta" style="margin-top:20px">Ricerca Google per i codici a barre (facoltativa, più affidabile)</div>
+  <div class="meta" style="margin-top:20px">Chiave Barcode Lookup (facoltativa)</div>
+    <div class="row" style="margin-top:6px"><input type="text" id="blk" placeholder="Incolla la chiave API"><button class="btn" id="blSave">Salva</button></div>
+    <div class="meta" style="margin-top:14px">Ricerca Google per i codici a barre (facoltativa, più affidabile)</div>
     <div class="row" style="margin-top:6px"><input type="text" id="gk" placeholder="API key"><input type="text" id="gcx" placeholder="ID motore (cx)"><button class="btn" id="gSave">Salva</button></div>
   </section>
   <section id="tab-find" class="hide">
@@ -205,7 +207,7 @@ async function smartSearch(text){
   text=text.trim();if(!text)return;
   try{
     if(/^\d{8,14}$/.test(text)){
-      lastEan=text;st.textContent='Passo 1 di 2: cerco il codice '+text+' sul web…';
+      lastEan=text;st.textContent='Passo 1 di 2: cerco il codice '+text+' …';
       const found=await webTitle(text);
       if(!found){showFb('Non sono riuscito a ricavare il titolo dal codice '+text+'.');return}
       hintFmt=found.fmt;
@@ -257,8 +259,20 @@ function titlesFrom(raws,ean){
   const cnt={};out.forEach(t=>{const k=t.toLowerCase();cnt[k]=(cnt[k]||0)+1});
   return [...new Set(out.map(t=>t.toLowerCase()))].sort((a,b)=>cnt[b]-cnt[a]).map(k=>out.find(t=>t.toLowerCase()===k));
 }
+const blKey=()=>{try{return localStorage.getItem('blkey')||''}catch(e){return ''}};
+$('#blk').value=blKey();
+$('#blSave').onclick=()=>{try{localStorage.setItem('blkey',$('#blk').value.trim());toast('Chiave salvata')}catch(e){toast('Impossibile salvare')}};
+async function dbTitles(ean){ /* database di codici commerciali: Barcode Lookup (con chiave), poi UPCitemdb */
+  const k=blKey();
+  if(k){try{const r=await fetch('https://api.barcodelookup.com/v3/products?'+new URLSearchParams({barcode:ean,formatted:'y',key:k}));
+    if(r.ok){const l=((await r.json()).products||[]).map(p=>p.title||p.product_name).filter(Boolean);if(l.length)return l}}catch(e){}}
+  try{const r=await fetch('https://api.upcitemdb.com/prod/trial/lookup?upc='+ean);
+    const l=((await r.json()).items||[]).map(i=>i.title).filter(Boolean);if(l.length)return l}catch(e){}
+  return [];
+}
 async function webTitle(ean){
-  const raws=await webResults(ean);if(!raws.length)return null;
+  let raws=await dbTitles(ean);
+  if(!raws.length)raws=await webResults(ean); /* se i database non lo conoscono, ricerca web */if(!raws.length)return null;
   const titles=titlesFrom(raws,ean);if(!titles.length)return null;
   return {titles:titles.slice(0,4),fmt:detectFmt(raws.join(' '))};
 }
