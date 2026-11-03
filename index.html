@@ -61,31 +61,63 @@ textarea{width:100%;margin-top:8px;padding:12px;border-radius:12px;border:2px so
 #sbox{background:var(--card);width:100%;max-width:560px;border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
 #sbox .seg button{font-size:14px}
 .fb{background:#fff1c9;color:#4a3500;border-radius:12px;padding:12px;margin-bottom:10px;font-weight:600}.fb .row{margin:8px 0 0}.fb.hide{display:none}
+
+/* ---- Nuova grafica ---- */
+:root{--gold:#c9a45c;--navy:#0a1a3c}
+body{padding-bottom:100px}
+.serif,h1,h2{font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif}
+header{display:flex;align-items:center;gap:12px;padding:calc(18px + env(safe-area-inset-top)) 20px 20px;
+  background:radial-gradient(90% 160% at 95% 10%,#34549a 0%,#0a1a3c00 60%),linear-gradient(135deg,#061330,#0c2354);border-bottom:2px solid #c9a45c55}
+.reel{width:46px;height:46px;flex:none}
+h1{margin:0;font-size:38px;font-weight:600;letter-spacing:.3px}
+.hd{display:flex;align-items:center;gap:14px;margin:6px 0 4px}
+.hd h2{margin:0;font-size:30px;font-weight:600;text-align:center;line-height:1.1}
+.ln{flex:1;height:1px;background:var(--gold);min-width:12px}
+.sub{text-align:center;color:var(--mute);margin:0 0 18px}
+#tab-list .hd,#tab-find .hd{margin-bottom:14px}
+.row{gap:12px}
+.big{position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;text-align:left;min-height:132px;padding:14px;
+  border-radius:18px;color:#fff;background:linear-gradient(155deg,#1c55d8 0%,#0a2a86 100%);border-bottom:3px solid var(--gold);
+  box-shadow:0 10px 22px -10px #0a2a86aa}
+.big .ic{width:50px;height:50px;position:absolute;top:14px;left:50%;transform:translateX(-50%)}
+.big .bt{font-size:16px;font-weight:800;line-height:1.15}
+.big .bs{font-size:12.5px;opacity:.85;margin-top:2px;padding-right:30px}
+.big .chev{position:absolute;right:10px;bottom:12px;width:28px;height:28px;border-radius:50%;background:#a9bdf2;color:var(--navy);display:grid;place-items:center;font-size:22px;line-height:1;padding-bottom:3px}
+.cardchk{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin:2px 0 14px;font-size:17px;font-weight:700;box-shadow:0 8px 18px -14px #0a1a3c88}
+.chk input{appearance:none;-webkit-appearance:none;width:26px;height:26px;border:2.5px solid var(--blue);border-radius:7px;background:var(--card) center/16px no-repeat;flex:none}
+.chk input:checked{background-color:var(--blue);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 8.5l3.2 3L13 4.5'/%3E%3C/svg%3E")}
+.sbar{flex:1;display:flex;align-items:center;gap:8px;background:var(--card);border:2px solid var(--line);border-radius:999px;padding:0 16px;color:var(--mute)}
+.sbar input[type=search]{border:0;background:none;padding:14px 0;outline:0;border-radius:0}
+input[type=search]{border-radius:999px;padding:13px 18px}
+.btn.go{padding:0 24px;border-radius:14px;font-size:16px;background:linear-gradient(155deg,#1c55d8,#0a2a86)}
+nav{background:linear-gradient(180deg,#0b1d45,#061330);border-top:2px solid #c9a45c55;padding:8px 8px calc(8px + env(safe-area-inset-bottom));gap:6px}
+nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0 10px;border-radius:16px;color:#aebbd8;font-size:13px;position:relative;box-shadow:none}
+nav button.on{color:#fff;background:#05070d;box-shadow:none}
+nav button.on::after{content:"";position:absolute;left:22%;right:22%;bottom:4px;height:2px;border-radius:2px;background:var(--gold)}
 </style>
 </head>
 <body>
-<header>
-  <h1>Cineteca</h1>
-  
-</header>
+<header><svg class="reel" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" fill="none" stroke="#c9a45c" stroke-width="3"/><circle cx="32" cy="32" r="6" fill="#c9a45c"/><g fill="#c9a45c"><circle cx="32" cy="14" r="5"/><circle cx="49" cy="26" r="5"/><circle cx="43" cy="46" r="5"/><circle cx="21" cy="46" r="5"/><circle cx="15" cy="26" r="5"/></g></svg><h1>Cineteca</h1></header>
 <main>
   <section id="tab-add">
+    <div class="hd"><span class="ln"></span><h2>Aggiungi un film</h2><span class="ln"></span></div><p class="sub">Scansiona un codice o cerca manualmente</p>
     <div class="row">
-      <button class="big" id="bBar">Foto codice a barre</button>
-      <button class="big alt" id="bCov">Foto copertina</button>
+      <button class="big" id="bBar"><svg class="ic" viewBox="0 0 48 48" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15V7h8M34 7h8v8M6 33v8h8M34 41h8v-8"/><path d="M14 15v18M19 15v18M25 15v18M29 15v18M35 15v18" stroke-width="2.6"/></svg><span class="bt">Foto codice a barre</span><span class="bs">Scansiona il codice EAN</span><span class="chev">›</span></button>
+      <button class="big" id="bCov"><svg class="ic" viewBox="0 0 48 48" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="7" width="38" height="34" rx="4"/><circle cx="16" cy="18" r="3.5"/><path d="M5 35l10-10 8 8 6-6 14 12"/></svg><span class="bt">Foto copertina</span><span class="bs">Scatta la foto del film</span><span class="chev">›</span></button>
     </div>
     <input type="file" id="fBar" accept="image/*" capture="environment" class="hide">
     <input type="file" id="fCov" accept="image/*" capture="environment" class="hide">
-    <label class="chk"><input type="checkbox" id="sealed"> Disco sigillato</label>
+    <label class="chk cardchk"><input type="checkbox" id="sealed"> Disco sigillato</label>
     <div class="row">
-      <input type="search" id="manual" placeholder="Oppure scrivi titolo o codice EAN">
-      <button class="btn" id="bManual">Cerca</button>
+      <label class="sbar"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg><input type="search" id="manual" placeholder="Oppure scrivi titolo o codice EAN"></label>
+      <button class="btn go" id="bManual">Cerca</button>
     </div>
     <div class="status" id="st1"></div>
     <div class="fb hide" id="fb"><div id="fbMsg"></div><div class="row"><input type="search" id="fbq" placeholder="Scrivi il titolo, es. Inception"><button class="btn" id="fbGo">Cerca</button></div></div>
     <div id="res1"></div>
   </section>
   <section id="tab-list" class="hide">
+    <div class="hd"><span class="ln"></span><h2>La mia collezione</h2><span class="ln"></span></div>
     <input type="search" id="q3" placeholder="Filtra la tua collezione…">
     <div class="status" id="st3"></div>
     <div id="res3"></div>
@@ -94,12 +126,9 @@ textarea{width:100%;margin-top:8px;padding:12px;border-radius:12px;border:2px so
       <button class="btn ghost" id="bImp">Importa backup</button>
       <input type="file" id="fImp" accept="application/json" class="hide">
     </div>
-  <div class="meta" style="margin-top:20px">Chiave Barcode Lookup (facoltativa)</div>
-    <div class="row" style="margin-top:6px"><input type="text" id="blk" placeholder="Incolla la chiave API"><button class="btn" id="blSave">Salva</button></div>
-    <div class="meta" style="margin-top:14px">Ricerca Google per i codici a barre (facoltativa, più affidabile)</div>
-    <div class="row" style="margin-top:6px"><input type="text" id="gk" placeholder="API key"><input type="text" id="gcx" placeholder="ID motore (cx)"><button class="btn" id="gSave">Salva</button></div>
   </section>
   <section id="tab-find" class="hide">
+    <div class="hd"><span class="ln"></span><h2>Cerca un film</h2><span class="ln"></span></div>
     <div class="seg" id="where">
       <button data-w="local" class="on">Nella mia collezione</button>
       <button data-w="tmdb">Su TMDB</button>
@@ -111,9 +140,9 @@ textarea{width:100%;margin-top:8px;padding:12px;border-radius:12px;border:2px so
   </section>
 </main>
 <nav>
-  <button data-t="add" class="on">Aggiungi</button>
-  <button data-t="list">Collezione</button>
-  <button data-t="find">Cerca</button>
+  <button data-t="add" class="on"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg><span>Aggiungi</span></button>
+  <button data-t="list"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span>Collezione</span></button>
+  <button data-t="find"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg><span>Cerca</span></button>
 </nav>
 <div id="cam" class="hide"><div class="hint" id="camhint"></div><video id="camv" playsinline muted></video>
   <div class="bar"><button class="btn ghost" id="camX">Annulla</button><button class="shutter" id="camS" aria-label="Scatta"></button><button class="btn ghost" id="camG">Galleria</button></div></div>
@@ -174,7 +203,7 @@ async function hydrate(root){
 
 /* ---------- UI ---------- */
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('show'),2200)}
-document.querySelector('nav').onclick=e=>{const t=e.target.dataset.t;if(!t)return;
+document.querySelector('nav').onclick=e=>{const t=e.target.closest('button')?.dataset.t;if(!t)return;
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
   ['add','list','find'].forEach(x=>$('#tab-'+x).classList.toggle('hide',t!==x));
   if(t==='find')runFind();if(t==='list')runList()};
@@ -230,8 +259,6 @@ $('#fbGo').onclick=fbGo;$('#fbq').onkeydown=e=>{if(e.key==='Enter')fbGo()};
 /* Passo 1: dal codice al titolo tramite ricerca web */
 const PROXIES=[u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),u=>'https://corsproxy.io/?'+encodeURIComponent(u)];
 const gcfg=()=>{try{return JSON.parse(localStorage.getItem('gcse')||'{}')}catch(e){return {}}};
-$('#gk').value=gcfg().key||'';$('#gcx').value=gcfg().cx||'';
-$('#gSave').onclick=()=>{try{localStorage.setItem('gcse',JSON.stringify({key:$('#gk').value.trim(),cx:$('#gcx').value.trim()}));toast('Salvato')}catch(e){toast('Impossibile salvare')}};
 async function webResults(ean){
   const g=gcfg();
   if(g.key&&g.cx){
@@ -260,8 +287,6 @@ function titlesFrom(raws,ean){
   return [...new Set(out.map(t=>t.toLowerCase()))].sort((a,b)=>cnt[b]-cnt[a]).map(k=>out.find(t=>t.toLowerCase()===k));
 }
 const blKey=()=>{try{return localStorage.getItem('blkey')||''}catch(e){return ''}};
-$('#blk').value=blKey();
-$('#blSave').onclick=()=>{try{localStorage.setItem('blkey',$('#blk').value.trim());toast('Chiave salvata')}catch(e){toast('Impossibile salvare')}};
 async function dbTitles(ean){ /* database di codici commerciali: Barcode Lookup (con chiave), poi UPCitemdb */
   const k=blKey();
   if(k){try{const r=await fetch('https://api.barcodelookup.com/v3/products?'+new URLSearchParams({barcode:ean,formatted:'y',key:k}));
