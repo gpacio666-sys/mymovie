@@ -60,6 +60,7 @@ textarea{width:100%;margin-top:8px;padding:12px;border-radius:12px;border:2px so
 #sheet{position:fixed;inset:0;background:#0009;z-index:30;display:flex;align-items:flex-end;justify-content:center}#sheet.hide{display:none}
 #sbox{background:var(--card);width:100%;max-width:560px;border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
 #sbox .seg button{font-size:14px}
+.fb{background:#fff1c9;color:#4a3500;border-radius:12px;padding:12px;margin-bottom:10px;font-weight:600}.fb .row{margin:8px 0 0}.fb.hide{display:none}
 </style>
 </head>
 <body>
@@ -81,6 +82,7 @@ textarea{width:100%;margin-top:8px;padding:12px;border-radius:12px;border:2px so
       <button class="btn" id="bManual">Cerca</button>
     </div>
     <div class="status" id="st1"></div>
+    <div class="fb hide" id="fb"><div id="fbMsg"></div><div class="row"><input type="search" id="fbq" placeholder="Scrivi il titolo, es. Inception"><button class="btn" id="fbGo">Cerca</button></div></div>
     <div id="res1"></div>
   </section>
   <section id="tab-list" class="hide">
@@ -92,8 +94,8 @@ textarea{width:100%;margin-top:8px;padding:12px;border-radius:12px;border:2px so
       <button class="btn ghost" id="bImp">Importa backup</button>
       <input type="file" id="fImp" accept="application/json" class="hide">
     </div>
-  <div class="meta" style="margin-top:20px">Chiave Barcode Lookup (per riconoscere i codici a barre)</div>
-    <div class="row" style="margin-top:6px"><input type="text" id="blk" placeholder="Incolla la chiave API"><button class="btn" id="blSave">Salva</button></div>
+  <div class="meta" style="margin-top:20px">Ricerca Google per i codici a barre (facoltativa, più affidabile)</div>
+    <div class="row" style="margin-top:6px"><input type="text" id="gk" placeholder="API key"><input type="text" id="gcx" placeholder="ID motore (cx)"><button class="btn" id="gSave">Salva</button></div>
   </section>
   <section id="tab-find" class="hide">
     <div class="seg" id="where">
@@ -156,7 +158,7 @@ async function addFromTmdb(id,ean,fmt,sealed){
 const pc={};
 const toDataURL=b=>new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result);x.onerror=()=>r('');x.readAsDataURL(b)});
 async function posterData(path){if(!path)return '';if(pc[path])return pc[path];
-  try{const r=await fetch('https://image.tmdb.org/t/p/w342'+path);if(!r.ok)return '';return pc[path]=await toDataURL(await r.blob())}catch(e){return ''}}
+  try{const r=await fetch('https://image.tmdb.org/t/p/w500'+path);if(!r.ok)return '';return pc[path]=await toDataURL(await r.blob())}catch(e){return ''}}
 async function hydrate(root){
   root.querySelectorAll('img[data-pp]').forEach(async im=>{const s=await posterData(im.dataset.pp);if(s)im.src=s});
   const ims=[...root.querySelectorAll('img[data-lid]')];if(!ims.length)return;
@@ -199,36 +201,68 @@ async function handleResults(list,st,box){
   box.innerHTML=list.slice(0,10).map(cardTmdb).join('');hydrate(box);
 }
 async function smartSearch(text){
-  const st=$('#st1'),box=$('#res1');box.innerHTML='';
+  const st=$('#st1'),box=$('#res1');box.innerHTML='';hideFb();
   text=text.trim();if(!text)return;
   try{
     if(/^\d{8,14}$/.test(text)){
-      lastEan=text;st.textContent='Cerco il codice '+text+'…';
-      const raw=await eanToTitle(text);hintFmt=detectFmt(raw);const title=cleanTitle(raw);
-      if(!title){st.textContent='Codice '+text+' non riconosciuto. Scrivi il titolo qui sopra e premi Cerca.';return}
-      $('#manual').value=title;text=title;
+      lastEan=text;st.textContent='Passo 1 di 2: cerco il codice '+text+' sul web…';
+      const found=await webTitle(text);
+      if(!found){showFb('Non sono riuscito a ricavare il titolo dal codice '+text+'.');return}
+      hintFmt=found.fmt;
+      st.textContent='Passo 2 di 2: trovato “'+found.titles[0]+'”, cerco su TMDB…';
+      let list=[],used='';
+      for(const t of found.titles){list=await searchTmdb(t);if(list.length){used=t;break}}
+      if(!list.length){showFb('Ho trovato “'+found.titles[0]+'” sul web, ma non su TMDB.');return}
+      $('#manual').value=used;handleResults(list,st,box);return;
     }
     st.textContent='Cerco su TMDB…';
-    handleResults(await searchTmdb(text),st,box);
+    const l=await searchTmdb(text);handleResults(l,st,box);
+    if(!l.length)showFb('Nessun risultato per “'+text+'”.');
   }catch(e){st.textContent='Errore: '+e.message+' (sei online?)'}
 }
-const blKey=()=>{try{return localStorage.getItem('blkey')||''}catch(e){return ''}};
-$('#blk').value=blKey();
-$('#blSave').onclick=()=>{try{localStorage.setItem('blkey',$('#blk').value.trim());toast('Chiave salvata')}catch(e){toast('Impossibile salvare la chiave')}};
-async function eanToTitle(ean){
-  const k=blKey();
-  if(k){
-    try{
-      const r=await fetch('https://api.barcodelookup.com/v3/products?'+new URLSearchParams({barcode:ean,formatted:'y',key:k}));
-      if(r.ok){const j=await r.json();const p=j.products?.[0];const t=p&&(p.title||p.product_name);if(t)return t}
-      else if(r.status===403||r.status===429)toast('Barcode Lookup: chiave non valida o limite raggiunto')
-    }catch(e){}
+function showFb(msg){$('#st1').textContent='';$('#fbMsg').textContent='⚠ '+msg+' Digita il titolo a mano:';$('#fb').classList.remove('hide');$('#fbq').value='';$('#fbq').focus()}
+function hideFb(){$('#fb').classList.add('hide')}
+const fbGo=()=>{const v=$('#fbq').value;if(!v.trim())return;$('#manual').value=v;hintFmt=detectFmt(v);smartSearch(v)};
+$('#fbGo').onclick=fbGo;$('#fbq').onkeydown=e=>{if(e.key==='Enter')fbGo()};
+
+/* Passo 1: dal codice al titolo tramite ricerca web */
+const PROXIES=[u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),u=>'https://corsproxy.io/?'+encodeURIComponent(u)];
+const gcfg=()=>{try{return JSON.parse(localStorage.getItem('gcse')||'{}')}catch(e){return {}}};
+$('#gk').value=gcfg().key||'';$('#gcx').value=gcfg().cx||'';
+$('#gSave').onclick=()=>{try{localStorage.setItem('gcse',JSON.stringify({key:$('#gk').value.trim(),cx:$('#gcx').value.trim()}));toast('Salvato')}catch(e){toast('Impossibile salvare')}};
+async function webResults(ean){
+  const g=gcfg();
+  if(g.key&&g.cx){
+    try{const r=await fetch('https://www.googleapis.com/customsearch/v1?'+new URLSearchParams({key:g.key,cx:g.cx,q:ean,num:'6',hl:'it'}));
+      if(r.ok){const l=((await r.json()).items||[]).map(i=>i.title);if(l.length)return l}}catch(e){}
   }
-  try{ /* alternativa gratuita se Barcode Lookup non risponde o non conosce il codice */
-    const r=await fetch('https://api.upcitemdb.com/prod/trial/lookup?upc='+ean);
-    const j=await r.json();return j.items?.[0]?.title||'';
-  }catch(e){return ''}
+  const url='https://html.duckduckgo.com/html/?q='+encodeURIComponent(ean);
+  for(const px of PROXIES){
+    try{const r=await fetch(px(url));if(!r.ok)continue;
+      const doc=new DOMParser().parseFromString(await r.text(),'text/html');
+      const l=[...doc.querySelectorAll('a.result__a')].slice(0,6).map(a=>a.textContent.trim()).filter(Boolean);
+      if(l.length)return l}catch(e){}
+  }
+  return [];
 }
+const JUNK=/amazon|ebay|unieuro|mediaworld|ibs\b|libraccio|feltrinelli|libreria|youtube|wikipedia|google|trovaprezzi|idealo|subito|facebook|instagram|pinterest|acquista|prezzo|offerte|spedizione|\.(it|com|net|org|eu)\b|barcode|\bean\b|\bupc\b|gtin|^film$/i;
+function titlesFrom(raws,ean){
+  const out=[];
+  for(const raw of raws){
+    for(const sg of raw.replace(ean,' ').split(/\s[-–—|·»]\s|\s?[|»]\s?|:\s/)){
+      const t=cleanTitle(sg);
+      if(t.length>=2&&t.length<80&&/\p{L}/u.test(t)&&!JUNK.test(t)){out.push(t);break}
+    }
+  }
+  const cnt={};out.forEach(t=>{const k=t.toLowerCase();cnt[k]=(cnt[k]||0)+1});
+  return [...new Set(out.map(t=>t.toLowerCase()))].sort((a,b)=>cnt[b]-cnt[a]).map(k=>out.find(t=>t.toLowerCase()===k));
+}
+async function webTitle(ean){
+  const raws=await webResults(ean);if(!raws.length)return null;
+  const titles=titlesFrom(raws,ean);if(!titles.length)return null;
+  return {titles:titles.slice(0,4),fmt:detectFmt(raws.join(' '))};
+}
+
 const cleanTitle=t=>t.replace(/\[[^\]]*\]|\([^)]*\)/g,' ')
   .replace(/\b(blu-?ray|4k|uhd|ultra\s*hd|dvd|steelbook|edizione|special|limited|collector'?s?|disc|dischi|\+|digital|copy|hd|2160p|1080p|ita|italiano|region|free|import)\b/gi,' ')
   .replace(/[-–:,]+\s*$/,'').replace(/\s+/g,' ').trim();
