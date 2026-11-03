@@ -1,9 +1,10 @@
 {
+  "id": "./",
   "name": "Cineteca",
   "short_name": "Cineteca",
   "description": "Cataloga la tua collezione di Blu-ray 4K, Blu-ray e DVD.",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#061330",
