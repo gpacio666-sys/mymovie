@@ -52,13 +52,20 @@ nav button.on{color:var(--blue);box-shadow:inset 0 3px 0 var(--blue)}
 #cam .bar .btn{color:#fff;border-color:#fff5;min-width:84px}
 #cam .hint{position:absolute;top:calc(14px + env(safe-area-inset-top));left:0;right:0;text-align:center;color:#fff;font-weight:700;text-shadow:0 1px 4px #000;padding:0 16px;z-index:1}
 .shutter{width:68px;height:68px;border-radius:50%;border:5px solid #fff;background:#ffffff33}
+.acts{align-items:center}
+.tag.sl{background:#1a7f4b;color:#fff}
+.chk{display:flex;align-items:center;gap:8px;margin:10px 0;font-weight:600}
+.chk input{width:20px;height:20px}
+textarea{width:100%;margin-top:8px;padding:12px;border-radius:12px;border:2px solid var(--line);background:var(--card);color:var(--ink);font:inherit}
+#sheet{position:fixed;inset:0;background:#0009;z-index:30;display:flex;align-items:flex-end;justify-content:center}#sheet.hide{display:none}
+#sbox{background:var(--card);width:100%;max-width:560px;border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+#sbox .seg button{font-size:14px}
 </style>
 </head>
 <body>
 <header>
   <h1>Cineteca</h1>
-  <div style="font-size:13px;opacity:.75;margin-bottom:6px">Formato del disco da aggiungere</div>
-  <div class="fmt" id="fmt"></div>
+  
 </header>
 <main>
   <section id="tab-add">
@@ -68,6 +75,7 @@ nav button.on{color:var(--blue);box-shadow:inset 0 3px 0 var(--blue)}
     </div>
     <input type="file" id="fBar" accept="image/*" capture="environment" class="hide">
     <input type="file" id="fCov" accept="image/*" capture="environment" class="hide">
+    <label class="chk"><input type="checkbox" id="sealed"> Disco sigillato</label>
     <div class="row">
       <input type="search" id="manual" placeholder="Oppure scrivi titolo o codice EAN">
       <button class="btn" id="bManual">Cerca</button>
@@ -75,28 +83,35 @@ nav button.on{color:var(--blue);box-shadow:inset 0 3px 0 var(--blue)}
     <div class="status" id="st1"></div>
     <div id="res1"></div>
   </section>
-  <section id="tab-find" class="hide">
-    <div class="seg" id="where">
-      <button data-w="local" class="on">Nella mia collezione</button>
-      <button data-w="tmdb">Su TMDB</button>
-    </div>
-    <div class="chips" id="chips"><button data-f="all" class="on">Tutti</button><button data-f="k4">4K UHD</button><button data-f="bd">Blu-ray</button><button data-f="dvd">DVD</button></div>
-    <input type="search" id="q" placeholder="Cerca un film…">
-    <div class="status" id="st2"></div>
-    <div id="res2"></div>
-    <div class="foot" id="foot">
+  <section id="tab-list" class="hide">
+    <input type="search" id="q3" placeholder="Filtra la tua collezione…">
+    <div class="status" id="st3"></div>
+    <div id="res3"></div>
+    <div class="foot">
       <button class="btn ghost" id="bExp">Esporta backup</button>
       <button class="btn ghost" id="bImp">Importa backup</button>
       <input type="file" id="fImp" accept="application/json" class="hide">
     </div>
   </section>
+  <section id="tab-find" class="hide">
+    <div class="seg" id="where">
+      <button data-w="local" class="on">Nella mia collezione</button>
+      <button data-w="tmdb">Su TMDB</button>
+    </div>
+    <input type="search" id="q" placeholder="Cerca un film…">
+    <div class="status" id="st2"></div>
+    <div id="res2"></div>
+    
+  </section>
 </main>
 <nav>
   <button data-t="add" class="on">Aggiungi</button>
+  <button data-t="list">Collezione</button>
   <button data-t="find">Cerca</button>
 </nav>
 <div id="cam" class="hide"><div class="hint" id="camhint"></div><video id="camv" playsinline muted></video>
   <div class="bar"><button class="btn ghost" id="camX">Annulla</button><button class="shutter" id="camS" aria-label="Scatta"></button><button class="btn ghost" id="camG">Galleria</button></div></div>
+<div id="sheet" class="hide"><div id="sbox"></div></div>
 <div id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js"></script>
@@ -104,7 +119,7 @@ nav button.on{color:var(--blue);box-shadow:inset 0 3px 0 var(--blue)}
 <script>
 const KEY='6d228c55aeff585e47162e4725eb26fe';
 const FORMATS={k4:'4K UHD',bd:'Blu-ray',dvd:'DVD'};
-let fmt='k4', where='local', flt='all';
+let where='local', hintFmt='';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -122,7 +137,7 @@ const tmdb=async(p,q={})=>{const r=await fetch(`https://api.themoviedb.org/3${p}
   if(!r.ok)throw new Error('TMDB '+r.status);return r.json()};
 const searchTmdb=q=>tmdb('/search/movie',{query:q,include_adult:'false'}).then(d=>d.results||[]);
 
-async function addFromTmdb(id,ean){
+async function addFromTmdb(id,ean,fmt,sealed){
   toast('Salvataggio…');
   const d=await tmdb('/movie/'+id,{append_to_response:'credits'});
   const poster=await posterData(d.poster_path)||null;
@@ -131,7 +146,7 @@ async function addFromTmdb(id,ean){
     overview:d.overview,runtime:d.runtime,genres:(d.genres||[]).map(g=>g.name),
     director:crew.filter(c=>c.job==='Director').map(c=>c.name).join(', '),
     cast:(d.credits?.cast||[]).slice(0,5).map(c=>c.name).join(', '),
-    rating:d.vote_average?+d.vote_average.toFixed(1):null,format:fmt,ean:ean||'',poster,posterPath:d.poster_path,added:Date.now()});
+    rating:d.vote_average?+d.vote_average.toFixed(1):null,format:fmt,sealed:!!sealed,notes:'',ean:ean||'',poster,posterPath:d.poster_path,added:Date.now()});
   toast(`Aggiunto: ${d.title} (${FORMATS[fmt]})`);
 }
 
@@ -153,17 +168,14 @@ async function hydrate(root){
 
 /* ---------- UI ---------- */
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>t.classList.remove('show'),2200)}
-function renderFmt(){$('#fmt').innerHTML=Object.entries(FORMATS).map(([k,v])=>`<button data-f="${k}" class="${k===fmt?'on':''}">${v}</button>`).join('')}
-$('#fmt').onclick=e=>{const f=e.target.dataset.f;if(f){fmt=f;renderFmt()}};
 document.querySelector('nav').onclick=e=>{const t=e.target.dataset.t;if(!t)return;
   document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
-  $('#tab-add').classList.toggle('hide',t!=='add');$('#tab-find').classList.toggle('hide',t!=='find');
-  if(t==='find')runFind()};
+  ['add','list','find'].forEach(x=>$('#tab-'+x).classList.toggle('hide',t!==x));
+  if(t==='find')runFind();if(t==='list')runList()};
 $('#where').onclick=e=>{const w=e.target.dataset.w;if(!w)return;where=w;
   document.querySelectorAll('#where button').forEach(b=>b.classList.toggle('on',b.dataset.w===w));
   $('#q').placeholder=w==='local'?'Titolo, regista, anno… (vuoto = tutta la collezione)':'Cerca un film su TMDB…';
-  $('#foot').classList.toggle('hide',w!=='local');$('#chips').classList.toggle('hide',w!=='local');runFind()};
-$('#chips').onclick=e=>{const f=e.target.dataset.f;if(!f)return;flt=f;document.querySelectorAll('#chips button').forEach(b=>b.classList.toggle('on',b.dataset.f===f));runFind()};
+  runFind()};
 
 const tagH=f=>`<span class="tag ${f}">${FORMATS[f]}</span>`;
 function cardTmdb(m){
@@ -171,18 +183,17 @@ function cardTmdb(m){
   return `<div class="card">${img}<div style="flex:1;min-width:0"><div class="t">${esc(m.title)}</div>
   <div class="meta">${(m.release_date||'').slice(0,4)||'—'}${m.original_title&&m.original_title!==m.title?' · '+esc(m.original_title):''}</div>
   ${m.overview?`<details><summary>Trama</summary><p>${esc(m.overview)}</p></details>`:''}
-  <div class="acts"><button class="btn" data-add="${m.id}">Aggiungi come ${FORMATS[fmt]}</button></div></div></div>`}
+  <div class="acts"><button class="btn" data-add="${m.id}">Aggiungi</button></div></div></div>`}
 function cardLocal(g){const f=g[0];
   return `<div class="card"><img class="p" data-lid="${f.id}" alt=""><div style="flex:1;min-width:0"><div class="t">${esc(f.title)}</div>
-  <div class="meta">${g.map(x=>tagH(x.format)).join('')}${esc(f.year)}${f.runtime?' · '+f.runtime+' min':''}${f.rating?' · ★ '+f.rating:''}</div>
-  <div class="meta">${esc(f.director)}${f.genres?.length?' · '+esc(f.genres.join(', ')):''}</div>
-  <details><summary>Dettagli</summary><p>${esc(f.overview)}</p><p class="meta">${f.cast?'Cast: '+esc(f.cast):''}</p></details>
-  ${g.map(x=>`<div class="acts">${tagH(x.format)}<button class="btn ghost" data-fmt="${x.id}">Cambia formato</button><button class="btn del" data-del="${x.id}">Elimina</button></div>`).join('')}</div></div>`}
+  <div class="meta">${esc(f.year)}${f.runtime?' · '+f.runtime+' min':''}${f.rating?' · ★ '+f.rating:''}${f.director?' · '+esc(f.director):''}</div>
+  <details><summary>Dettagli</summary><p>${esc(f.overview)}</p><p class="meta">${f.genres?.length?esc(f.genres.join(', '))+'<br>':''}${f.cast?'Cast: '+esc(f.cast):''}</p></details>
+  ${g.map(x=>`<div class="acts">${tagH(x.format)}${x.sealed?'<span class="tag sl">Sigillato</span>':''}<button class="btn ghost" data-edit="${x.id}">Modifica</button><button class="btn del" data-del="${x.id}">Elimina</button></div>${x.notes?`<div class="meta">${esc(x.notes)}</div>`:''}`).join('')}</div></div>`}
 
 /* ---------- Aggiungi ---------- */
 let lastEan='';
 async function handleResults(list,st,box){
-  st.textContent=list.length?`${list.length} risultati — tocca “Aggiungi” su quello giusto.`:'Nessun risultato. Prova a correggere il titolo qui sopra.';
+  st.textContent=list.length?`${list.length} risultati — tocca “Aggiungi” su quello giusto.${hintFmt?' Rilevato: '+FORMATS[hintFmt]+'.':''}`:'Nessun risultato. Prova a correggere il titolo qui sopra.';
   box.innerHTML=list.slice(0,10).map(cardTmdb).join('');hydrate(box);
 }
 async function smartSearch(text){
@@ -191,7 +202,7 @@ async function smartSearch(text){
   try{
     if(/^\d{8,14}$/.test(text)){
       lastEan=text;st.textContent='Cerco il codice '+text+'…';
-      const title=await eanToTitle(text);
+      const raw=await eanToTitle(text);hintFmt=detectFmt(raw);const title=cleanTitle(raw);
       if(!title){st.textContent='Codice '+text+' non riconosciuto. Scrivi il titolo qui sopra e premi Cerca.';return}
       $('#manual').value=title;text=title;
     }
@@ -203,19 +214,42 @@ async function eanToTitle(ean){
   try{
     const r=await fetch('https://api.upcitemdb.com/prod/trial/lookup?upc='+ean);
     const j=await r.json();const t=j.items?.[0]?.title;
-    return t?cleanTitle(t):'';
+    return t||'';
   }catch(e){return ''}
 }
 const cleanTitle=t=>t.replace(/\[[^\]]*\]|\([^)]*\)/g,' ')
   .replace(/\b(blu-?ray|4k|uhd|ultra\s*hd|dvd|steelbook|edizione|special|limited|collector'?s?|disc|dischi|\+|digital|copy|hd|2160p|1080p|ita|italiano|region|free|import)\b/gi,' ')
   .replace(/[-–:,]+\s*$/,'').replace(/\s+/g,' ').trim();
 
-$('#bManual').onclick=()=>smartSearch($('#manual').value);
-$('#manual').onkeydown=e=>{if(e.key==='Enter')smartSearch(e.target.value)};
-$('#res1').onclick=async e=>{const id=e.target.dataset.add;if(!id)return;
-  const dup=(await dbAll()).find(f=>f.tmdbId==id&&f.format===fmt);
-  if(dup&&!confirm('Hai già questo film in '+FORMATS[fmt]+'. Aggiungerlo di nuovo?'))return;
-  e.target.disabled=true;try{await addFromTmdb(+id,lastEan);lastEan=''}catch(err){toast('Errore: '+err.message)}e.target.disabled=false};
+const detectFmt=t=>/4k|uhd|ultra\s*hd|2160/i.test(t||'')?'k4':/blu-?\s?ray|\bbd\b/i.test(t||'')?'bd':/dvd/i.test(t||'')?'dvd':'';
+const manualGo=()=>{const v=$('#manual').value;hintFmt=detectFmt(v);smartSearch(v)};
+$('#bManual').onclick=manualGo;
+$('#manual').onkeydown=e=>{if(e.key==='Enter')manualGo()};
+$('#res1').onclick=e=>{const id=e.target.dataset.add;if(id)doAdd(+id,lastEan,false,e.target)};
+async function doAdd(id,ean,ask,btn){
+  let f=ask?'':hintFmt,sealed=$('#sealed').checked;
+  if(!f){const r=await sheet({head:'Che supporto è?',film:{format:'',sealed},withFields:false});if(!r)return;f=r.format;sealed=r.sealed}
+  const dup=(await dbAll()).find(x=>x.tmdbId==id&&x.format===f);
+  if(dup&&!confirm('Hai già questo film in '+FORMATS[f]+'. Aggiungerlo di nuovo?'))return;
+  btn.disabled=true;
+  try{await addFromTmdb(id,ean,f,sealed);if(!ask)lastEan='';runList()}catch(err){toast('Errore: '+err.message)}
+  btn.disabled=false}
+function sheet({head,film,withFields}){return new Promise(res=>{
+  let f=film.format||'';
+  $('#sbox').innerHTML=`<h3 style="margin:0 0 10px">${esc(head)}</h3>
+  ${withFields?`<input type="text" id="sT" value="${esc(film.title)}"><input type="text" id="sY" inputmode="numeric" placeholder="Anno" value="${esc(film.year)}" style="margin-top:8px">`:''}
+  <div class="meta" style="margin:10px 0 4px">Supporto</div>
+  <div class="seg" id="sF" style="margin:0">${Object.entries(FORMATS).map(([k,v])=>`<button data-f="${k}" class="${k===f?'on':''}">${v}</button>`).join('')}</div>
+  <label class="chk"><input type="checkbox" id="sS" ${film.sealed?'checked':''}> Sigillato</label>
+  ${withFields?`<textarea id="sN" rows="2" placeholder="Note (edizione, condizione, dove l'hai preso…)">${esc(film.notes||'')}</textarea>`:''}
+  <div class="row" style="margin-top:12px"><button class="btn ghost" id="sX" style="flex:1">Annulla</button><button class="btn" id="sOK" style="flex:2">${withFields?'Salva':'Aggiungi'}</button></div>`;
+  $('#sheet').classList.remove('hide');
+  const close=v=>{$('#sheet').classList.add('hide');res(v)};
+  $('#sF').onclick=e=>{const k=e.target.dataset.f;if(!k)return;f=k;[...$('#sF').children].forEach(x=>x.classList.toggle('on',x.dataset.f===k))};
+  $('#sX').onclick=()=>close(null);
+  $('#sOK').onclick=()=>{if(!f){toast('Scegli il supporto');return}
+    close({format:f,sealed:$('#sS').checked,title:withFields?$('#sT').value.trim():'',year:withFields?$('#sY').value.trim():'',notes:withFields?$('#sN').value.trim():''})};
+})}
 
 /* Codice a barre da foto */
 $('#bBar').onclick=()=>openCam('bar');
@@ -249,7 +283,7 @@ $('#fCov').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)readCov
 async function readCover(f){
   const st=$('#st1');st.textContent='Leggo il testo della copertina (può richiedere qualche secondo)…';
   try{
-    const {data}=await Tesseract.recognize(await shrink(f),'ita+eng');
+    const {data}=await Tesseract.recognize(await shrink(f),'ita+eng');hintFmt=detectFmt(data.text);
     const lines=data.lines.map(l=>({t:l.text.replace(/[^\p{L}\p{N}\s:'’!&-]/gu,' ').replace(/\s+/g,' ').trim(),h:l.bbox.y1-l.bbox.y0}))
       .filter(l=>l.t.length>=3&&/\p{L}{3}/u.test(l.t)).sort((a,b)=>b.h-a.h);
     const guess=cleanTitle(lines[0]?.t||'');
@@ -287,32 +321,38 @@ $('#camS').onclick=async()=>{const v=$('#camv');if(!v.videoWidth)return;
   const m=camMode;closeCam();const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.9));
   m==='bar'?readBarcode(blob):readCover(blob)};
 
+/* ---------- Collezione ---------- */
+async function renderLocal(q,st,box){
+  const all=(await dbAll()).sort((a,b)=>a.title.localeCompare(b.title,'it'));
+  const groups={};all.forEach(f=>(groups[f.tmdbId||f.title+f.year]??=[]).push(f));
+  const n=q.toLowerCase();
+  const list=Object.values(groups).filter(g=>!n||g.some(f=>[f.title,f.original,f.director,f.year,f.cast,FORMATS[f.format],f.notes,f.ean,f.sealed?'sigillato':''].join(' ').toLowerCase().includes(n)));
+  st.textContent=`${list.length} titoli · ${all.length} dischi`+(n?' (filtrati)':'');
+  box.innerHTML=list.length?list.map(cardLocal).join(''):'<div class="meta">Nessun film. Vai su “Aggiungi” per scansionare il primo.</div>';
+  hydrate(box)}
+const runList=()=>renderLocal($('#q3').value.trim(),$('#st3'),$('#res3'));
+$('#q3').oninput=runList;
+const refresh=()=>{if(where==='local')runFind();runList()};
+
 /* ---------- Cerca ---------- */
 let timer;
 $('#q').oninput=()=>{clearTimeout(timer);timer=setTimeout(runFind,where==='local'?150:500)};
 async function runFind(){
   const q=$('#q').value.trim(),st=$('#st2'),box=$('#res2');
-  if(where==='local'){
-    const all=(await dbAll()).sort((a,b)=>a.title.localeCompare(b.title,'it'));
-    const groups={};all.forEach(f=>(groups[f.tmdbId||f.title+f.year]??=[]).push(f));
-    const n=q.toLowerCase();
-    const list=Object.values(groups).filter(g=>(flt==='all'||g.some(x=>x.format===flt))&&
-      (!n||g.some(f=>[f.title,f.original,f.director,f.year,f.cast,FORMATS[f.format],f.ean].join(' ').toLowerCase().includes(n))));
-    st.textContent=`${list.length} film (${all.length} dischi in totale)`;
-    box.innerHTML=list.length?list.map(cardLocal).join(''):'<div class="meta">Nessun film trovato. Usa “Aggiungi” per scansionare il primo.</div>';
-    hydrate(box);
-  }else{
+  if(where==='local'){await renderLocal(q,st,box)}else{
     if(!q){st.textContent='Scrivi un titolo per cercare su TMDB.';box.innerHTML='';return}
     st.textContent='Cerco su TMDB…';
     try{const l=await searchTmdb(q);st.textContent=`${l.length} risultati su TMDB`;box.innerHTML=l.slice(0,15).map(cardTmdb).join('');hydrate(box)}
     catch(e){st.textContent='Errore: '+e.message}
   }
 }
-$('#res2').onclick=async e=>{const d=e.target.dataset;
-  if(d.add){e.target.disabled=true;try{await addFromTmdb(+d.add,'')}catch(err){toast('Errore: '+err.message)}e.target.disabled=false}
-  if(d.del&&confirm('Eliminare questo film dalla collezione?')){await dbDel(+d.del);runFind()}
-  if(d.fmt){const f=(await dbAll()).find(x=>x.id==d.fmt);const keys=Object.keys(FORMATS);
-    f.format=keys[(keys.indexOf(f.format)+1)%keys.length];await dbPut(f);toast('Formato: '+FORMATS[f.format]);runFind()}};
+async function localActions(e){const d=e.target.dataset;
+  if(d.add){doAdd(+d.add,'',true,e.target);return}
+  if(d.del&&confirm('Eliminare questo disco dalla collezione?')){await dbDel(+d.del);refresh()}
+  if(d.edit){const f=(await dbAll()).find(x=>x.id==d.edit);
+    const r=await sheet({head:'Modifica',film:f,withFields:true});
+    if(r){Object.assign(f,{format:r.format,sealed:r.sealed,notes:r.notes,year:r.year});if(r.title)f.title=r.title;await dbPut(f);toast('Salvato');refresh()}}}
+$('#res2').onclick=localActions;$('#res3').onclick=localActions;
 
 /* ---------- Backup ---------- */
 $('#bExp').onclick=async()=>{
@@ -324,9 +364,9 @@ $('#bImp').onclick=()=>$('#fImp').click();
 $('#fImp').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
   const list=JSON.parse(await f.text());
   for(const o of list){delete o.id;await dbPut(o)}
-  toast(list.length+' film importati');runFind()};
+  toast(list.length+' film importati');refresh()};
 
-renderFmt();
+runList();
 </script>
 </body>
 </html>
