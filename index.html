@@ -97,6 +97,8 @@ nav button.on::after{content:"";position:absolute;left:22%;right:22%;bottom:4px;
 .fbl{display:block;margin-top:6px;color:#0a3fb8}.fbl[hidden]{display:none}
 #frame{position:fixed;border:3px solid #c9a45c;border-radius:12px;box-shadow:0 0 0 100vmax #000b;z-index:1;pointer-events:none}
 #camv{touch-action:none}#cam .hint{z-index:2}#cam .bar{position:relative;z-index:3}
+.tag.sh{background:#8a6a2c;color:#fff}
+#sbox select{width:100%;padding:12px;border-radius:12px;border:2px solid var(--line);background:var(--card);color:var(--ink);font-size:16px}
 </style>
 </head>
 <body>
@@ -110,7 +112,6 @@ nav button.on::after{content:"";position:absolute;left:22%;right:22%;bottom:4px;
     </div>
     <input type="file" id="fBar" accept="image/*" capture="environment" class="hide">
     <input type="file" id="fCov" accept="image/*" capture="environment" class="hide">
-    <label class="chk cardchk"><input type="checkbox" id="sealed"> Disco sigillato</label>
     <div class="row">
       <label class="sbar"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg><input type="search" id="manual" placeholder="Oppure scrivi titolo o codice EAN"></label>
       <button class="btn go" id="bManual">Cerca</button>
@@ -175,7 +176,7 @@ const tmdb=async(p,q={})=>{const r=await fetch(`https://api.themoviedb.org/3${p}
   if(!r.ok)throw new Error('TMDB '+r.status);return r.json()};
 const searchTmdb=q=>tmdb('/search/movie',{query:q,include_adult:'false'}).then(d=>d.results||[]);
 
-async function addFromTmdb(id,ean,fmt,sealed){
+async function addFromTmdb(id,ean,fmt,sealed,shelf){
   toast('Salvataggio…');
   const d=await tmdb('/movie/'+id,{append_to_response:'credits'});
   const poster=await posterData(d.poster_path)||null;
@@ -184,7 +185,7 @@ async function addFromTmdb(id,ean,fmt,sealed){
     overview:d.overview,runtime:d.runtime,genres:(d.genres||[]).map(g=>g.name),
     director:crew.filter(c=>c.job==='Director').map(c=>c.name).join(', '),
     cast:(d.credits?.cast||[]).slice(0,5).map(c=>c.name).join(', '),
-    rating:d.vote_average?+d.vote_average.toFixed(1):null,format:fmt,sealed:!!sealed,notes:'',ean:ean||'',poster,posterPath:d.poster_path,added:Date.now()});
+    rating:d.vote_average?+d.vote_average.toFixed(1):null,format:fmt,sealed:!!sealed,shelf:shelf||'',notes:'',ean:ean||'',poster,posterPath:d.poster_path,added:Date.now()});
   toast(`Aggiunto: ${d.title} (${FORMATS[fmt]})`);
 }
 
@@ -226,7 +227,7 @@ function cardLocal(g){const f=g[0];
   return `<div class="card"><img class="p" data-lid="${f.id}" alt=""><div style="flex:1;min-width:0"><div class="t">${esc(f.title)}</div>
   <div class="meta">${esc(f.year)}${f.runtime?' · '+f.runtime+' min':''}${f.rating?' · ★ '+f.rating:''}${f.director?' · '+esc(f.director):''}</div>
   <details><summary>Dettagli</summary><p>${esc(f.overview)}</p><p class="meta">${f.genres?.length?esc(f.genres.join(', '))+'<br>':''}${f.cast?'Cast: '+esc(f.cast):''}</p></details>
-  ${g.map(x=>`<div class="acts">${tagH(x.format)}${x.sealed?'<span class="tag sl">Sigillato</span>':''}<button class="btn ghost" data-edit="${x.id}">Modifica</button><button class="btn del" data-del="${x.id}">Elimina</button></div>${x.notes?`<div class="meta">${esc(x.notes)}</div>`:''}`).join('')}</div></div>`}
+  ${g.map(x=>`<div class="acts">${tagH(x.format)}${x.sealed?'<span class="tag sl">Sigillato</span>':''}${x.shelf?`<span class="tag sh">Scaffale ${x.shelf}</span>`:''}<button class="btn ghost" data-edit="${x.id}">Modifica</button><button class="btn del" data-del="${x.id}">Elimina</button></div>${x.notes?`<div class="meta">${esc(x.notes)}</div>`:''}`).join('')}</div></div>`}
 
 /* ---------- Aggiungi ---------- */
 let lastEan='';
@@ -319,12 +320,12 @@ $('#bManual').onclick=manualGo;
 $('#manual').onkeydown=e=>{if(e.key==='Enter')manualGo()};
 $('#res1').onclick=e=>{const id=e.target.dataset.add;if(id)doAdd(+id,lastEan,false,e.target)};
 async function doAdd(id,ean,ask,btn){
-  let f=ask?'':hintFmt,sealed=$('#sealed').checked;
-  if(!f){const r=await sheet({head:'Che supporto è?',film:{format:'',sealed},withFields:false});if(!r)return;f=r.format;sealed=r.sealed}
+  const r=await sheet({head:'Aggiungi alla collezione',film:{format:ask?'':hintFmt,sealed:false,shelf:''},withFields:false});
+  if(!r)return;const f=r.format,sealed=r.sealed,shelf=r.shelf;
   const dup=(await dbAll()).find(x=>x.tmdbId==id&&x.format===f);
   if(dup&&!confirm('Hai già questo film in '+FORMATS[f]+'. Aggiungerlo di nuovo?'))return;
   btn.disabled=true;
-  try{await addFromTmdb(id,ean,f,sealed);if(!ask)lastEan='';runList()}catch(err){toast('Errore: '+err.message)}
+  try{await addFromTmdb(id,ean,f,sealed,shelf);if(!ask)lastEan='';runList()}catch(err){toast('Errore: '+err.message)}
   btn.disabled=false}
 function sheet({head,film,withFields}){return new Promise(res=>{
   let f=film.format||'';
@@ -332,7 +333,9 @@ function sheet({head,film,withFields}){return new Promise(res=>{
   ${withFields?`<input type="text" id="sT" value="${esc(film.title)}"><input type="text" id="sY" inputmode="numeric" placeholder="Anno" value="${esc(film.year)}" style="margin-top:8px">`:''}
   <div class="meta" style="margin:10px 0 4px">Supporto</div>
   <div class="seg" id="sF" style="margin:0">${Object.entries(FORMATS).map(([k,v])=>`<button data-f="${k}" class="${k===f?'on':''}">${v}</button>`).join('')}</div>
-  <label class="chk"><input type="checkbox" id="sS" ${film.sealed?'checked':''}> Sigillato</label>
+  <div class="meta" style="margin:12px 0 4px">Scaffale</div>
+  <select id="sSh"><option value="">—</option>${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option value="${n}" ${film.shelf==n?'selected':''}>${n}</option>`).join('')}</select>
+  <label class="chk"><input type="checkbox" id="sS" ${film.sealed?'checked':''}> Disco sigillato</label>
   ${withFields?`<textarea id="sN" rows="2" placeholder="Note (edizione, condizione, dove l'hai preso…)">${esc(film.notes||'')}</textarea>`:''}
   <div class="row" style="margin-top:12px"><button class="btn ghost" id="sX" style="flex:1">Annulla</button><button class="btn" id="sOK" style="flex:2">${withFields?'Salva':'Aggiungi'}</button></div>`;
   $('#sheet').classList.remove('hide');
@@ -340,7 +343,7 @@ function sheet({head,film,withFields}){return new Promise(res=>{
   $('#sF').onclick=e=>{const k=e.target.dataset.f;if(!k)return;f=k;[...$('#sF').children].forEach(x=>x.classList.toggle('on',x.dataset.f===k))};
   $('#sX').onclick=()=>close(null);
   $('#sOK').onclick=()=>{if(!f){toast('Scegli il supporto');return}
-    close({format:f,sealed:$('#sS').checked,title:withFields?$('#sT').value.trim():'',year:withFields?$('#sY').value.trim():'',notes:withFields?$('#sN').value.trim():''})};
+    close({format:f,sealed:$('#sS').checked,shelf:$('#sSh').value,title:withFields?$('#sT').value.trim():'',year:withFields?$('#sY').value.trim():'',notes:withFields?$('#sN').value.trim():''})};
 })}
 
 /* Codice a barre da foto */
@@ -456,7 +459,7 @@ async function renderLocal(q,st,box){
   const all=(await dbAll()).sort((a,b)=>a.title.localeCompare(b.title,'it'));
   const groups={};all.forEach(f=>(groups[f.tmdbId||f.title+f.year]??=[]).push(f));
   const n=q.toLowerCase();
-  const list=Object.values(groups).filter(g=>!n||g.some(f=>[f.title,f.original,f.director,f.year,f.cast,FORMATS[f.format],f.notes,f.ean,f.sealed?'sigillato':''].join(' ').toLowerCase().includes(n)));
+  const list=Object.values(groups).filter(g=>!n||g.some(f=>[f.title,f.original,f.director,f.year,f.cast,FORMATS[f.format],f.notes,f.ean,f.sealed?'sigillato':'',f.shelf?'scaffale '+f.shelf:''].join(' ').toLowerCase().includes(n)));
   st.textContent=`${list.length} titoli · ${all.length} dischi`+(n?' (filtrati)':'');
   box.innerHTML=list.length?list.map(cardLocal).join(''):'<div class="meta">Nessun film. Vai su “Aggiungi” per scansionare il primo.</div>';
   hydrate(box)}
@@ -481,7 +484,7 @@ async function localActions(e){const d=e.target.dataset;
   if(d.del&&confirm('Eliminare questo disco dalla collezione?')){await dbDel(+d.del);refresh()}
   if(d.edit){const f=(await dbAll()).find(x=>x.id==d.edit);
     const r=await sheet({head:'Modifica',film:f,withFields:true});
-    if(r){Object.assign(f,{format:r.format,sealed:r.sealed,notes:r.notes,year:r.year});if(r.title)f.title=r.title;await dbPut(f);toast('Salvato');refresh()}}}
+    if(r){Object.assign(f,{format:r.format,sealed:r.sealed,shelf:r.shelf,notes:r.notes,year:r.year});if(r.title)f.title=r.title;await dbPut(f);toast('Salvato');refresh()}}}
 $('#res2').onclick=localActions;$('#res3').onclick=localActions;
 
 /* ---------- Backup ---------- */
