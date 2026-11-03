@@ -94,7 +94,6 @@ nav{background:linear-gradient(180deg,#0b1d45,#061330);border-top:2px solid #c9a
 nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0 10px;border-radius:16px;color:#aebbd8;font-size:13px;position:relative;box-shadow:none}
 nav button.on{color:#fff;background:#05070d;box-shadow:none}
 nav button.on::after{content:"";position:absolute;left:22%;right:22%;bottom:4px;height:2px;border-radius:2px;background:var(--gold)}
-.fbl{display:block;margin-top:6px;color:#0a3fb8}.fbl[hidden]{display:none}
 #frame{position:fixed;border:3px solid #c9a45c;border-radius:12px;box-shadow:0 0 0 100vmax #000b;z-index:1;pointer-events:none}
 #camv{touch-action:none}#cam .hint{z-index:2}#cam .bar{position:relative;z-index:3}
 .tag.sh{background:#8a6a2c;color:#fff}
@@ -117,7 +116,7 @@ nav button.on::after{content:"";position:absolute;left:22%;right:22%;bottom:4px;
       <button class="btn go" id="bManual">Cerca</button>
     </div>
     <div class="status" id="st1"></div>
-    <div class="fb hide" id="fb"><div id="fbMsg"></div><a id="fbLink" class="fbl" target="_blank" rel="noopener" hidden>Apri product-search.net per questo codice ↗</a><div class="row"><input type="search" id="fbq" placeholder="Scrivi il titolo, es. Inception"><button class="btn" id="fbGo">Cerca</button></div></div>
+    <div class="fb hide" id="fb"><div id="fbMsg"></div><div class="row"><input type="search" id="fbq" placeholder="Scrivi il titolo, es. Inception"><button class="btn" id="fbGo">Cerca</button></div></div>
     <div id="res1"></div>
   </section>
   <section id="tab-list" class="hide">
@@ -244,12 +243,12 @@ async function smartSearch(text){
     if(/^\d{8,14}$/.test(text)){
       lastEan=text;st.textContent='Passo 1 di 2: cerco il codice '+text+' …';
       const found=await webTitle(text);
-      if(!found){showFb('Non sono riuscito a ricavare il titolo dal codice '+text+'.',text);return}
+      if(!found){showFb('Non sono riuscito a ricavare il titolo dal codice '+text+'.');return}
       hintFmt=found.fmt;
       st.textContent='Passo 2 di 2: trovato “'+found.titles[0]+'”, cerco su TMDB…';
       let list=[],used='';
       for(const t of found.titles){list=await searchTmdb(t);if(list.length){used=t;break}}
-      if(!list.length){showFb('Ho trovato “'+found.titles[0]+'” sul web, ma non su TMDB.',text);return}
+      if(!list.length){showFb('Ho trovato “'+found.titles[0]+'” sul web, ma non su TMDB.');return}
       $('#manual').value=used;handleResults(list,st,box);return;
     }
     st.textContent='Cerco su TMDB…';
@@ -259,23 +258,24 @@ async function smartSearch(text){
     if(!l.length)showFb('Nessun risultato per “'+text+'”.');
   }catch(e){st.textContent='Errore: '+e.message+' (sei online?)'}
 }
-function showFb(msg,ean){const a=$('#fbLink');a.hidden=!ean;if(ean)a.href='https://it.product-search.net/ext/'+ean;$('#st1').textContent='';$('#fbMsg').textContent='⚠ '+msg+' Digita o incolla qui il titolo (anche con il formato, es. “… (2 Blu-ray)”):';$('#fb').classList.remove('hide');$('#fbq').value='';$('#fbq').focus()}
+function showFb(msg){$('#st1').textContent='';$('#fbMsg').textContent='⚠ '+msg+' Cerca per nome:';$('#fb').classList.remove('hide');$('#fbq').value='';$('#fbq').focus()}
 function hideFb(){$('#fb').classList.add('hide')}
 const fbGo=()=>{const v=$('#fbq').value;if(!v.trim())return;$('#manual').value=v;hintFmt=detectFmt(v);smartSearch(v)};
 $('#fbGo').onclick=fbGo;$('#fbq').onkeydown=e=>{if(e.key==='Enter')fbGo()};
 
 /* Passo 1: dal codice al titolo tramite ricerca web */
+const fetchT=(u,ms=7000)=>{const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);return fetch(u,{signal:c.signal}).finally(()=>clearTimeout(t))};
 const PROXIES=[u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),u=>'https://corsproxy.io/?'+encodeURIComponent(u)];
 const gcfg=()=>{try{return JSON.parse(localStorage.getItem('gcse')||'{}')}catch(e){return {}}};
 async function webResults(ean){
   const g=gcfg();
   if(g.key&&g.cx){
-    try{const r=await fetch('https://www.googleapis.com/customsearch/v1?'+new URLSearchParams({key:g.key,cx:g.cx,q:ean,num:'6',hl:'it'}));
+    try{const r=await fetchT('https://www.googleapis.com/customsearch/v1?'+new URLSearchParams({key:g.key,cx:g.cx,q:ean+' blu-ray dvd film',num:'6',hl:'it'}));
       if(r.ok){const l=((await r.json()).items||[]).map(i=>i.title);if(l.length)return l}}catch(e){}
   }
-  const url='https://html.duckduckgo.com/html/?q='+encodeURIComponent(ean);
+  const url='https://html.duckduckgo.com/html/?q='+encodeURIComponent(ean+' blu-ray dvd film');
   for(const px of PROXIES){
-    try{const r=await fetch(px(url));if(!r.ok)continue;
+    try{const r=await fetchT(px(url));if(!r.ok)continue;
       const doc=new DOMParser().parseFromString(await r.text(),'text/html');
       const l=[...doc.querySelectorAll('a.result__a')].slice(0,6).map(a=>a.textContent.trim()).filter(Boolean);
       if(l.length)return l}catch(e){}
@@ -297,15 +297,15 @@ function titlesFrom(raws,ean){
 const blKey=()=>{try{return localStorage.getItem('blkey')||''}catch(e){return ''}};
 async function dbTitles(ean){ /* database di codici commerciali: Barcode Lookup (con chiave), poi UPCitemdb */
   const k=blKey();
-  if(k){try{const r=await fetch('https://api.barcodelookup.com/v3/products?'+new URLSearchParams({barcode:ean,formatted:'y',key:k}));
+  if(k){try{const r=await fetchT('https://api.barcodelookup.com/v3/products?'+new URLSearchParams({barcode:ean,formatted:'y',key:k}));
     if(r.ok){const l=((await r.json()).products||[]).map(p=>p.title||p.product_name).filter(Boolean);if(l.length)return l}}catch(e){}}
-  try{const r=await fetch('https://api.upcitemdb.com/prod/trial/lookup?upc='+ean);
+  try{const r=await fetchT('https://api.upcitemdb.com/prod/trial/lookup?upc='+ean);
     const l=((await r.json()).items||[]).map(i=>i.title).filter(Boolean);if(l.length)return l}catch(e){}
   return [];
 }
 async function webTitle(ean){
   let raws=await dbTitles(ean);
-  if(!raws.length)raws=await webResults(ean); /* se i database non lo conoscono, ricerca web */if(!raws.length)return null;
+  if(!raws.length)raws=(await webResults(ean)).filter(r=>/blu-?\s?ray|\bdvd\b|\b4k\b|uhd|film|steelbook|edizione/i.test(r)); /* se i database non lo conoscono, ricerca web */if(!raws.length)return null;
   const titles=titlesFrom(raws,ean);if(!titles.length)return null;
   return {titles:titles.slice(0,4),fmt:detectFmt(raws.join(' '))};
 }
