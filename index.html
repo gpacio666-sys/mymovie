@@ -267,7 +267,9 @@ $('#fbGo').onclick=fbGo;$('#fbq').onkeydown=e=>{if(e.key==='Enter')fbGo()};
 const fetchT=(u,ms=7000)=>{const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);return fetch(u,{signal:c.signal}).finally(()=>clearTimeout(t))};
 const PROXIES=[u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),u=>'https://corsproxy.io/?'+encodeURIComponent(u)];
 const gcfg=()=>{try{return JSON.parse(localStorage.getItem('gcse')||'{}')}catch(e){return {}}};
+const WORKER_URL='https://twilight-hall-16ea.gpacio666.workers.dev/'; /* indirizzo del tuo Worker, es. 'https://cineteca.tuonome.workers.dev' */
 async function webResults(ean){
+  if(WORKER_URL){try{const r=await fetchT(WORKER_URL+'?ean='+ean,10000);if(r.ok){const l=((await r.json()).titles||[]);if(l.length)return l}}catch(e){}}
   const g=gcfg();
   if(g.key&&g.cx){
     try{const r=await fetchT('https://www.googleapis.com/customsearch/v1?'+new URLSearchParams({key:g.key,cx:g.cx,q:ean+' blu-ray dvd film',num:'6',hl:'it'}));
