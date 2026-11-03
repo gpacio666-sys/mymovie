@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0a1f44">
 <title>Cineteca</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Cineteca">
 <style>
 :root{--bg:#eef1f6;--card:#fff;--ink:#0d1626;--mute:#5d6b82;--line:#d6dce8;--blue:#0a4bd8;--blue-ink:#fff;--k4:#111;--dvd:#8b93a3}
 @media(prefers-color-scheme:dark){:root{--bg:#0b111d;--card:#141c2c;--ink:#e8edf7;--mute:#93a0b8;--line:#25304a;--blue:#4b82ff;--k4:#f2f2f2;--dvd:#6f7889}}
@@ -99,6 +105,22 @@ nav button.on::after{content:"";position:absolute;left:22%;right:22%;bottom:4px;
 #camv{touch-action:none}#cam .hint{z-index:2}#cam .bar{position:relative;z-index:3}
 .tag.sh{background:#8a6a2c;color:#fff}
 #sbox select{width:100%;padding:12px;border-radius:12px;border:2px solid var(--line);background:var(--card);color:var(--ink);font-size:16px}
+</style>
+/* Forzatura totale per eliminare il badge di Netlify */
+#netlify-analytics-badge,
+.netlify-badge,
+[class*="netlify"],
+[id*="netlify"],
+iframe[src*="netlify"],
+div[style*="position: fixed"][style*="bottom: 0px"][style*="right: 0px"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    height: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+}
 </style>
 </head>
 <body>
@@ -500,6 +522,24 @@ $('#fImp').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)
   toast(list.length+' film importati');refresh()};
 
 runList();
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+</script>
+<script>
+// Forza la rimozione del banner di Netlify a intervalli regolari
+setInterval(function() {
+    var badges = document.querySelectorAll('[class*="netlify"], [id*="netlify"], .netlify-badge, #netlify-badge, iframe[src*="netlify"]');
+    badges.forEach(function(badge) {
+        badge.remove();
+    });
+    
+    // Rimuove eventuali div fluttuanti anonimi iniettati in basso a destra
+    var fixedDivs = document.querySelectorAll('div[style*="position: fixed"]');
+    fixedDivs.forEach(function(div) {
+        if (div.innerHTML.includes('netlify') || div.innerText.includes('Netlify')) {
+            div.remove();
+        }
+    });
+}, 500);
 </script>
 </body>
 </html>
