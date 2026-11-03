@@ -92,6 +92,8 @@ textarea{width:100%;margin-top:8px;padding:12px;border-radius:12px;border:2px so
       <button class="btn ghost" id="bImp">Importa backup</button>
       <input type="file" id="fImp" accept="application/json" class="hide">
     </div>
+  <div class="meta" style="margin-top:20px">Chiave Barcode Lookup (per riconoscere i codici a barre)</div>
+    <div class="row" style="margin-top:6px"><input type="text" id="blk" placeholder="Incolla la chiave API"><button class="btn" id="blSave">Salva</button></div>
   </section>
   <section id="tab-find" class="hide">
     <div class="seg" id="where">
@@ -210,11 +212,21 @@ async function smartSearch(text){
     handleResults(await searchTmdb(text),st,box);
   }catch(e){st.textContent='Errore: '+e.message+' (sei online?)'}
 }
+const blKey=()=>{try{return localStorage.getItem('blkey')||''}catch(e){return ''}};
+$('#blk').value=blKey();
+$('#blSave').onclick=()=>{try{localStorage.setItem('blkey',$('#blk').value.trim());toast('Chiave salvata')}catch(e){toast('Impossibile salvare la chiave')}};
 async function eanToTitle(ean){
-  try{
+  const k=blKey();
+  if(k){
+    try{
+      const r=await fetch('https://api.barcodelookup.com/v3/products?'+new URLSearchParams({barcode:ean,formatted:'y',key:k}));
+      if(r.ok){const j=await r.json();const p=j.products?.[0];const t=p&&(p.title||p.product_name);if(t)return t}
+      else if(r.status===403||r.status===429)toast('Barcode Lookup: chiave non valida o limite raggiunto')
+    }catch(e){}
+  }
+  try{ /* alternativa gratuita se Barcode Lookup non risponde o non conosce il codice */
     const r=await fetch('https://api.upcitemdb.com/prod/trial/lookup?upc='+ean);
-    const j=await r.json();const t=j.items?.[0]?.title;
-    return t||'';
+    const j=await r.json();return j.items?.[0]?.title||'';
   }catch(e){return ''}
 }
 const cleanTitle=t=>t.replace(/\[[^\]]*\]|\([^)]*\)/g,' ')
