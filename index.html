@@ -5,12 +5,6 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0a1f44">
 <title>Cineteca</title>
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Cineteca">
 <style>
 :root{--bg:#eef1f6;--card:#fff;--ink:#0d1626;--mute:#5d6b82;--line:#d6dce8;--blue:#0a4bd8;--blue-ink:#fff;--k4:#111;--dvd:#8b93a3}
 @media(prefers-color-scheme:dark){:root{--bg:#0b111d;--card:#141c2c;--ink:#e8edf7;--mute:#93a0b8;--line:#25304a;--blue:#4b82ff;--k4:#f2f2f2;--dvd:#6f7889}}
@@ -108,6 +102,10 @@ nav button.on::after{content:"";position:absolute;left:22%;right:22%;bottom:4px;
 .foot{flex-wrap:wrap}
 .bk{display:flex;gap:8px;align-items:center;background:#fff1c9;color:#4a3500;padding:10px 14px;font-weight:700}.bk span{flex:1}.bk.hide{display:none}
 #sbox{max-height:92vh;overflow:auto}
+.tag.tv{background:#0e7490;color:#fff}
+.phbox{flex:1;height:96px;border:2px dashed var(--line);border-radius:12px;display:grid;place-items:center;color:var(--mute);font-weight:700;background:center/cover no-repeat;position:relative;cursor:pointer}
+.phbox.has{border-style:solid}.phbox.has span{background:#000a;color:#fff;padding:2px 8px;border-radius:8px}
+.phx{position:absolute;top:4px;right:4px;width:28px;height:28px;border-radius:50%;border:0;background:#000c;color:#fff;font-size:17px;line-height:1}
 </style>
 </head>
 <body>
@@ -190,19 +188,27 @@ const dbDel=id=>tx('readwrite',s=>s.delete(id));
 /* ---------- TMDB ---------- */
 const tmdb=async(p,q={})=>{const r=await fetch(`https://api.themoviedb.org/3${p}?`+new URLSearchParams({api_key:KEY,language:'it-IT',...q}));
   if(!r.ok)throw new Error('TMDB '+r.status);return r.json()};
-const searchTmdb=q=>tmdb('/search/movie',{query:q,include_adult:'false'}).then(d=>d.results||[]);
+async function photoData(file,max=1000,q=.75){
+  const b=await createImageBitmap(file),k=Math.min(1,max/Math.max(b.width,b.height));
+  const c=document.createElement('canvas');c.width=Math.round(b.width*k);c.height=Math.round(b.height*k);
+  c.getContext('2d').drawImage(b,0,0,c.width,c.height);return c.toDataURL('image/jpeg',q)}
+function zoom(src){
+  $('#sbox').innerHTML=`<img src="${src}" style="width:100%;border-radius:12px"><div class="row" style="margin-top:10px"><button class="btn ghost" id="zX" style="flex:1">Chiudi</button></div>`;
+  $('#sheet').classList.remove('hide');$('#zX').onclick=()=>$('#sheet').classList.add('hide')}
+const searchTmdb=q=>tmdb('/search/multi',{query:q,include_adult:'false'}).then(d=>(d.results||[]).filter(r=>r.media_type==='movie'||r.media_type==='tv')
+  .map(r=>r.media_type==='tv'?{...r,kind:'tv',title:r.name,original_title:r.original_name,release_date:r.first_air_date}:{...r,kind:'movie'}));
 
-async function addFromTmdb(id,ean,fmt,sealed,shelf,x={}){
+async function addFromTmdb(id,ean,fmt,sealed,shelf,x={},kind='movie'){
   toast('Salvataggio…');
-  const d=await tmdb('/movie/'+id,{append_to_response:'credits'});
+  const d=await tmdb('/'+(kind==='tv'?'tv':'movie')+'/'+id,{append_to_response:'credits'});
   const poster=await posterData(d.poster_path)||null;
   const crew=d.credits?.crew||[];
-  await dbPut({tmdbId:d.id,title:d.title,original:d.original_title,year:(d.release_date||'').slice(0,4),
-    overview:d.overview,runtime:d.runtime,genres:(d.genres||[]).map(g=>g.name),
-    director:crew.filter(c=>c.job==='Director').map(c=>c.name).join(', '),
+  await dbPut({tmdbId:d.id,kind:kind==='tv'?'tv':'movie',seasons:d.number_of_seasons||'',title:d.title||d.name,original:d.original_title||d.original_name,year:(d.release_date||d.first_air_date||'').slice(0,4),photoFront:x.photoFront||'',photoBack:x.photoBack||'',
+    overview:d.overview,runtime:kind==='tv'?(d.episode_run_time?.[0]||''):d.runtime,genres:(d.genres||[]).map(g=>g.name),
+    director:kind==='tv'?(d.created_by||[]).map(c=>c.name).join(', '):crew.filter(c=>c.job==='Director').map(c=>c.name).join(', '),
     cast:(d.credits?.cast||[]).slice(0,5).map(c=>c.name).join(', '),
     rating:d.vote_average?+d.vote_average.toFixed(1):null,format:fmt,sealed:!!sealed,shelf:shelf||'',steelbook:!!x.steelbook,numbered:!!x.numbered,numNo:x.numNo||'',numTot:x.numTot||'',notes:'',ean:ean||'',poster,posterPath:d.poster_path,added:Date.now()});
-  toast(`Aggiunto: ${d.title} (${FORMATS[fmt]})`);
+  toast(`Aggiunto: ${d.title||d.name} (${FORMATS[fmt]})`);
 }
 
 /* ---------- Locandine (scaricate e convertite in data URL, così si vedono sempre) ---------- */
@@ -216,7 +222,7 @@ async function hydrate(root){
   const all=await dbAll();
   ims.forEach(async im=>{const f=all.find(x=>x.id==im.dataset.lid);if(!f)return;
     let s=f.poster;if(s instanceof Blob)s=await toDataURL(s);
-    if(!s){try{let pp=f.posterPath;if(!pp){pp=(await tmdb('/movie/'+f.tmdbId)).poster_path;f.posterPath=pp}
+    if(!s){try{let pp=f.posterPath;if(!pp){pp=(await tmdb('/'+(f.kind==='tv'?'tv':'movie')+'/'+f.tmdbId)).poster_path;f.posterPath=pp}
       s=await posterData(pp);if(s){f.poster=s;await dbPut(f)}}catch(e){}}
     if(s)im.src=s});
 }
@@ -236,14 +242,14 @@ const tagH=f=>`<span class="tag ${f}">${FORMATS[f]}</span>`;
 function cardTmdb(m){
   const img=m.poster_path?`<img class="p" data-pp="${m.poster_path}" src="https://image.tmdb.org/t/p/w154${m.poster_path}" alt="">`:'<div class="ph"></div>';
   return `<div class="card">${img}<div style="flex:1;min-width:0"><div class="t">${esc(m.title)}</div>
-  <div class="meta">${(m.release_date||'').slice(0,4)||'—'}${m.original_title&&m.original_title!==m.title?' · '+esc(m.original_title):''}</div>
+  <div class="meta">${(m.release_date||'').slice(0,4)||'—'}${m.kind==='tv'?' · Serie TV':''}${m.original_title&&m.original_title!==m.title?' · '+esc(m.original_title):''}</div>
   ${m.overview?`<details><summary>Trama</summary><p>${esc(m.overview)}</p></details>`:''}
-  <div class="acts"><button class="btn" data-add="${m.id}">Aggiungi</button></div></div></div>`}
+  <div class="acts"><button class="btn" data-add="${m.id}" data-kind="${m.kind||'movie'}">Aggiungi</button></div></div></div>`}
 function cardLocal(g){const f=g[0];
   return `<div class="card"><img class="p" data-lid="${f.id}" alt=""><div style="flex:1;min-width:0"><div class="t">${esc(f.title)}</div>
-  <div class="meta">${esc(f.year)}${f.runtime?' · '+f.runtime+' min':''}${f.rating?' · ★ '+f.rating:''}${f.director?' · '+esc(f.director):''}</div>
+  <div class="meta">${f.kind==='tv'?'<span class="tag tv">Serie TV</span>':''}${esc(f.year)}${f.kind==='tv'&&f.seasons?' · '+f.seasons+' stagioni':''}${f.runtime?' · '+f.runtime+' min':''}${f.rating?' · ★ '+f.rating:''}${f.director?' · '+esc(f.director):''}</div>
   <details><summary>Dettagli</summary><p>${esc(f.overview)}</p><p class="meta">${f.genres?.length?esc(f.genres.join(', '))+'<br>':''}${f.cast?'Cast: '+esc(f.cast):''}</p></details>
-  ${g.map(x=>`<div class="acts">${tagH(x.format)}${x.sealed?'<span class="tag sl">Sigillato</span>':''}${x.shelf?`<span class="tag sh">Scaffale ${x.shelf}</span>`:''}${x.steelbook?'<span class="tag sb">SteelBook</span>':''}${x.numbered?`<span class="tag nm">Numerata${x.numNo&&x.numTot?' '+x.numNo+'/'+x.numTot:''}</span>`:''}<button class="btn ghost" data-edit="${x.id}">Modifica</button><button class="btn del" data-del="${x.id}">Elimina</button></div>${x.notes?`<div class="meta">${esc(x.notes)}</div>`:''}`).join('')}</div></div>`}
+  ${g.map(x=>`<div class="acts">${tagH(x.format)}${x.sealed?'<span class="tag sl">Sigillato</span>':''}${x.shelf?`<span class="tag sh">Scaffale ${x.shelf}</span>`:''}${x.steelbook?'<span class="tag sb">SteelBook</span>':''}${x.numbered?`<span class="tag nm">Numerata${x.numNo&&x.numTot?' '+x.numNo+'/'+x.numTot:''}</span>`:''}<button class="btn ghost" data-edit="${x.id}">Modifica</button><button class="btn del" data-del="${x.id}">Elimina</button></div>${x.photoFront||x.photoBack?`<div class="acts">${x.photoFront?`<button class="btn ghost" data-ph="${x.id}|F">Foto fronte</button>`:''}${x.photoBack?`<button class="btn ghost" data-ph="${x.id}|B">Foto retro</button>`:''}</div>`:''}${x.notes?`<div class="meta">${esc(x.notes)}</div>`:''}`).join('')}</div></div>`}
 
 /* ---------- Aggiungi ---------- */
 let lastEan='';
@@ -330,7 +336,8 @@ async function webTitle(ean){
   return {titles:titles.slice(0,4),fmt:detectFmt(raws.join(' '))};
 }
 
-const cleanTitle=t=>t.replace(/\[[^\]]*\]|\([^)]*\)/g,' ')
+const SERIES=/\b(stagione|season)\s*\d+\b|\b(la\s+)?serie\s+completa\b|\bcomplete\s+series\b|\b(stagioni|stagione|seasons|season)\b/gi;
+const cleanTitle=t=>t.replace(SERIES,' ').replace(/\[[^\]]*\]|\([^)]*\)/g,' ')
   .replace(/\b(blu-?ray|4k|uhd|ultra\s*hd|dvd|steelbook|edizione|special|limited|collector'?s?|disc|dischi|\+|digital|copy|hd|2160p|1080p|ita|italiano|region|free|import)\b/gi,' ')
   .replace(/[-–:,]+\s*$/,'').replace(/\s+/g,' ').trim();
 
@@ -338,14 +345,14 @@ const detectFmt=t=>/4k|uhd|ultra\s*hd|2160/i.test(t||'')?'k4':/blu-?\s?ray|\bbd\
 const manualGo=()=>{const v=$('#manual').value;hintFmt=detectFmt(v);smartSearch(v)};
 $('#bManual').onclick=manualGo;
 $('#manual').onkeydown=e=>{if(e.key==='Enter')manualGo()};
-$('#res1').onclick=e=>{const id=e.target.dataset.add;if(id)doAdd(+id,lastEan,false,e.target)};
-async function doAdd(id,ean,ask,btn){
+$('#res1').onclick=e=>{const id=e.target.dataset.add;if(id)doAdd(+id,lastEan,false,e.target,e.target.dataset.kind||'movie')};
+async function doAdd(id,ean,ask,btn,kind='movie'){
   const r=await sheet({head:'Aggiungi alla collezione',film:{format:ask?'':hintFmt,sealed:false,shelf:''},withFields:false});
   if(!r)return;const f=r.format,sealed=r.sealed,shelf=r.shelf;
-  const dup=(await dbAll()).find(x=>x.tmdbId==id&&x.format===f);
+  const dup=(await dbAll()).find(x=>x.tmdbId==id&&(x.kind||'movie')===kind&&x.format===f);
   if(dup&&!confirm('Hai già questo film in '+FORMATS[f]+'. Aggiungerlo di nuovo?'))return;
   btn.disabled=true;
-  try{await addFromTmdb(id,ean,f,sealed,shelf,r);if(!ask)lastEan='';runList()}catch(err){toast('Errore: '+err.message)}
+  try{await addFromTmdb(id,ean,f,sealed,shelf,r,kind);if(!ask)lastEan='';runList()}catch(err){toast('Errore: '+err.message)}
   btn.disabled=false}
 function sheet({head,film,withFields}){return new Promise(res=>{
   let f=film.format||'';
@@ -360,14 +367,24 @@ function sheet({head,film,withFields}){return new Promise(res=>{
   <label class="chk"><input type="checkbox" id="sNm" ${film.numbered?'checked':''}> Edizione speciale numerata</label>
   <div id="sNb" style="display:${film.numbered?'flex':'none'};gap:8px;align-items:center;margin-bottom:6px"><input type="text" inputmode="numeric" id="sNn" placeholder="N°" value="${esc(film.numNo||'')}"><b>/</b><input type="text" inputmode="numeric" id="sNt" placeholder="Totale" value="${esc(film.numTot||'')}"></div>
   ${withFields?`<textarea id="sN" rows="2" placeholder="Note (edizione, condizione, dove l'hai preso…)">${esc(film.notes||'')}</textarea>`:''}
+  <div class="meta" style="margin:12px 0 4px">Foto del tuo disco (facoltative)</div>
+  <div class="row" id="sPh" style="margin-bottom:0"><label class="phbox" id="phF"></label><label class="phbox" id="phB"></label></div>
   <div class="row" style="margin-top:12px"><button class="btn ghost" id="sX" style="flex:1">Annulla</button><button class="btn" id="sOK" style="flex:2">${withFields?'Salva':'Aggiungi'}</button></div>`;
   $('#sheet').classList.remove('hide');
+  let pf=film.photoFront||'',pb=film.photoBack||'';
+  const drawPh=()=>[['#phF','Fronte',pf,'F'],['#phB','Retro',pb,'B']].forEach(([sel,lab,url,k])=>{
+    const el=$(sel);el.style.backgroundImage=url?`url("${url}")`:'';el.className='phbox'+(url?' has':'');
+    el.innerHTML=`<span>${url?'':'+ '}${lab}</span><input type="file" accept="image/*" hidden data-k="${k}">${url?`<button type="button" class="phx" data-x="${k}">×</button>`:''}`});
+  drawPh();
+  $('#sPh').onchange=async e=>{const k=e.target.dataset.k,f0=e.target.files?.[0];if(!k||!f0)return;
+    try{const d=await photoData(f0);if(k==='F')pf=d;else pb=d;drawPh()}catch(err){toast('Foto non leggibile')}};
+  $('#sPh').onclick=e=>{const k=e.target.dataset.x;if(!k)return;e.preventDefault();if(k==='F')pf='';else pb='';drawPh()};
   const close=v=>{$('#sheet').classList.add('hide');res(v)};
   $('#sF').onclick=e=>{const k=e.target.dataset.f;if(!k)return;f=k;[...$('#sF').children].forEach(x=>x.classList.toggle('on',x.dataset.f===k))};
   $('#sX').onclick=()=>close(null);
   $('#sNm').onchange=()=>{$('#sNb').style.display=$('#sNm').checked?'flex':'none'};
   $('#sOK').onclick=()=>{if(!f){toast('Scegli il supporto');return}
-    close({format:f,sealed:$('#sS').checked,shelf:$('#sSh').value,steelbook:$('#sSb').checked,numbered:$('#sNm').checked,numNo:$('#sNn').value.replace(/\D/g,''),numTot:$('#sNt').value.replace(/\D/g,''),title:withFields?$('#sT').value.trim():'',year:withFields?$('#sY').value.trim():'',notes:withFields?$('#sN').value.trim():''})};
+    close({format:f,sealed:$('#sS').checked,shelf:$('#sSh').value,photoFront:pf,photoBack:pb,steelbook:$('#sSb').checked,numbered:$('#sNm').checked,numNo:$('#sNn').value.replace(/\D/g,''),numTot:$('#sNt').value.replace(/\D/g,''),title:withFields?$('#sT').value.trim():'',year:withFields?$('#sY').value.trim():'',notes:withFields?$('#sN').value.trim():''})};
 })}
 
 /* Codice a barre da foto */
@@ -481,7 +498,7 @@ $('#camS').onclick=async()=>{const v=$('#camv');if(!v.videoWidth)return;const m=
 /* ---------- Collezione ---------- */
 async function renderLocal(q,st,box){
   const all=(await dbAll()).sort((a,b)=>a.title.localeCompare(b.title,'it'));
-  const groups={};all.forEach(f=>(groups[f.tmdbId||f.title+f.year]??=[]).push(f));
+  const groups={};all.forEach(f=>(groups[(f.kind||'movie')+(f.tmdbId||f.title+f.year)]??=[]).push(f));
   const n=q.toLowerCase();
   const list=Object.values(groups).filter(g=>!n||g.some(f=>[f.title,f.original,f.director,f.year,f.cast,FORMATS[f.format],f.notes,f.ean,f.sealed?'sigillato':'',f.shelf?'scaffale '+f.shelf:'',f.steelbook?'steelbook':'',f.numbered?'numerata '+numStr(f):''].join(' ').toLowerCase().includes(n)));
   st.textContent=`${list.length} titoli · ${all.length} dischi`+(n?' (filtrati)':'');
@@ -504,20 +521,21 @@ async function runFind(){
   }
 }
 async function localActions(e){const d=e.target.dataset;
-  if(d.add){doAdd(+d.add,'',true,e.target);return}
+  if(d.ph){const [pid,k]=d.ph.split('|');const f=(await dbAll()).find(x=>x.id==pid);const src=f&&(k==='F'?f.photoFront:f.photoBack);if(src)zoom(src);return}
+  if(d.add){doAdd(+d.add,'',true,e.target,d.kind||'movie');return}
   if(d.del&&confirm('Eliminare questo disco dalla collezione?')){await dbDel(+d.del);refresh()}
   if(d.edit){const f=(await dbAll()).find(x=>x.id==d.edit);
     const r=await sheet({head:'Modifica',film:f,withFields:true});
-    if(r){Object.assign(f,{format:r.format,sealed:r.sealed,shelf:r.shelf,steelbook:r.steelbook,numbered:r.numbered,numNo:r.numNo,numTot:r.numTot,notes:r.notes,year:r.year});if(r.title)f.title=r.title;await dbPut(f);toast('Salvato');refresh()}}}
+    if(r){Object.assign(f,{format:r.format,sealed:r.sealed,shelf:r.shelf,steelbook:r.steelbook,numbered:r.numbered,numNo:r.numNo,numTot:r.numTot,photoFront:r.photoFront,photoBack:r.photoBack,notes:r.notes,year:r.year});if(r.title)f.title=r.title;await dbPut(f);toast('Salvato');refresh()}}}
 $('#res2').onclick=localActions;$('#res3').onclick=localActions;
 
 /* ---------- Backup ---------- */
 $('#bExp').onclick=()=>saveBackupFile();
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const numStr=f=>f.numbered?(f.numNo&&f.numTot?f.numNo+'/'+f.numTot:'Sì'):'';
-const snapshot=async()=>(await dbAll()).map(({poster,...r})=>r); /* senza locandine: si riscaricano da TMDB */
+const snapshot=async(photos)=>(await dbAll()).map(({poster,...r})=>{if(!photos){delete r.photoFront;delete r.photoBack}return r}); /* senza locandine: si riscaricano da TMDB */
 async function saveBackupFile(){
-  const data=await snapshot();
+  const data=await snapshot(true);
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));
   a.download='cineteca-backup-'+today()+'.json';a.click();
   try{localStorage.setItem('lastFile',today())}catch(e){}
@@ -535,7 +553,7 @@ $('#bXls').onclick=async()=>{
   if(!window.XLSX){toast('Libreria Excel non caricata: serve la connessione');return}
   const all=(await dbAll()).sort((a,b)=>a.title.localeCompare(b.title,'it'));
   if(!all.length){toast('La collezione è vuota');return}
-  const rows=all.map(f=>({'Titolo':f.title,'Titolo originale':f.original||'','Anno':f.year||'','Formato':FORMATS[f.format]||'','Sigillato':f.sealed?'Sì':'No','SteelBook':f.steelbook?'Sì':'No','Edizione numerata':numStr(f),'Scaffale':f.shelf||'','Regista':f.director||'','Generi':(f.genres||[]).join(', '),'Durata (min)':f.runtime||'','Voto TMDB':f.rating||'','Cast':f.cast||'','EAN':f.ean||'','Note':f.notes||'','ID TMDB':f.tmdbId||'','Aggiunto il':f.added?new Date(f.added).toLocaleDateString('it-IT'):''}));
+  const rows=all.map(f=>({'Titolo':f.title,'Titolo originale':f.original||'','Anno':f.year||'','Formato':FORMATS[f.format]||'','Sigillato':f.sealed?'Sì':'No','SteelBook':f.steelbook?'Sì':'No','Edizione numerata':numStr(f),'Scaffale':f.shelf||'','Regista':f.director||'','Generi':(f.genres||[]).join(', '),'Durata (min)':f.runtime||'','Voto TMDB':f.rating||'','Cast':f.cast||'','EAN':f.ean||'','Note':f.notes||'','ID TMDB':f.tmdbId||'','Tipo':f.kind==='tv'?'Serie TV':'Film','Foto disco':(f.photoFront||f.photoBack)?'Sì':'No','Aggiunto il':f.added?new Date(f.added).toLocaleDateString('it-IT'):''}));
   const ws=XLSX.utils.json_to_sheet(rows);
   ws['!cols']=[34,30,6,10,10,10,16,9,24,24,12,10,40,16,30,10,12].map(w=>({wch:w}));
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Collezione');
@@ -549,8 +567,9 @@ $('#bRes').onclick=async()=>{
   $('#rsX').onclick=()=>$('#sheet').classList.add('hide');
   $('#sbox').onclick=async e=>{const day=e.target.dataset.rs;if(!day)return;
     const b=list.find(x=>x.day===day);if(!b||!confirm('Sostituire la collezione attuale con il backup del '+day+'?'))return;
+    const ph={};(await dbAll()).forEach(f=>{if(f.photoFront||f.photoBack)ph[f.added]=f}); /* le foto non sono nelle copie interne: le conservo */
     await txs('films','readwrite',s=>s.clear());
-    for(const o of JSON.parse(b.data)){delete o.id;await dbPut(o)}
+    for(const o of JSON.parse(b.data)){delete o.id;const k=ph[o.added];if(k){o.photoFront=k.photoFront;o.photoBack=k.photoBack}await dbPut(o)}
     $('#sheet').classList.add('hide');toast('Backup ripristinato');refresh()}};
 $('#bImp').onclick=()=>$('#fImp').click();
 $('#fImp').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
@@ -560,7 +579,6 @@ $('#fImp').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)
 
 runList();
 autoBackup();document.addEventListener('visibilitychange',()=>{if(!document.hidden)autoBackup()});
-if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script>
 </body>
 </html>
