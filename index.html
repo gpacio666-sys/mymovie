@@ -104,10 +104,15 @@ nav button.on::after{content:"";position:absolute;left:22%;right:22%;bottom:4px;
 #camv{touch-action:none}#cam .hint{z-index:2}#cam .bar{position:relative;z-index:3}
 .tag.sh{background:#8a6a2c;color:#fff}
 #sbox select{width:100%;padding:12px;border-radius:12px;border:2px solid var(--line);background:var(--card);color:var(--ink);font-size:16px}
+.tag.sb{background:#4a4f5c;color:#fff}.tag.nm{background:#7a2f8f;color:#fff}
+.foot{flex-wrap:wrap}
+.bk{display:flex;gap:8px;align-items:center;background:#fff1c9;color:#4a3500;padding:10px 14px;font-weight:700}.bk span{flex:1}.bk.hide{display:none}
+#sbox{max-height:92vh;overflow:auto}
 </style>
 </head>
 <body>
 <header><svg class="reel" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" fill="none" stroke="#c9a45c" stroke-width="3"/><circle cx="32" cy="32" r="6" fill="#c9a45c"/><g fill="#c9a45c"><circle cx="32" cy="14" r="5"/><circle cx="49" cy="26" r="5"/><circle cx="43" cy="46" r="5"/><circle cx="21" cy="46" r="5"/><circle cx="15" cy="26" r="5"/></g></svg><h1>Cineteca</h1></header>
+<div id="bk" class="bk hide"><span>Backup di oggi pronto</span><button class="btn" id="bkGo">Salva sul telefono</button><button class="btn ghost" id="bkX">Dopo</button></div>
 <main>
   <section id="tab-add">
     <div class="hd"><span class="ln"></span><h2>Aggiungi un film</h2><span class="ln"></span></div><p class="sub">Scansiona un codice o cerca manualmente</p>
@@ -131,8 +136,10 @@ nav button.on::after{content:"";position:absolute;left:22%;right:22%;bottom:4px;
     <div class="status" id="st3"></div>
     <div id="res3"></div>
     <div class="foot">
+      <button class="btn" id="bXls">Esporta Excel</button>
       <button class="btn ghost" id="bExp">Esporta backup</button>
       <button class="btn ghost" id="bImp">Importa backup</button>
+      <button class="btn ghost" id="bRes">Backup automatici</button>
       <input type="file" id="fImp" accept="application/json" class="hide">
     </div>
   </section>
@@ -159,6 +166,7 @@ nav button.on::after{content:"";position:absolute;left:22%;right:22%;bottom:4px;
 <div id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 <script>
 const KEY='6d228c55aeff585e47162e4725eb26fe';
@@ -168,10 +176,13 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ---------- DB locale (IndexedDB) ---------- */
-const dbP=new Promise((ok,ko)=>{const r=indexedDB.open('cineteca',1);
-  r.onupgradeneeded=()=>r.result.createObjectStore('films',{keyPath:'id',autoIncrement:true});
+const dbP=new Promise((ok,ko)=>{const r=indexedDB.open('cineteca',2);
+  r.onupgradeneeded=()=>{const d=r.result;
+    if(!d.objectStoreNames.contains('films'))d.createObjectStore('films',{keyPath:'id',autoIncrement:true});
+    if(!d.objectStoreNames.contains('backups'))d.createObjectStore('backups',{keyPath:'day'})};
   r.onsuccess=()=>ok(r.result);r.onerror=()=>ko(r.error)});
-const tx=async(mode,fn)=>{const db=await dbP;return new Promise((ok,ko)=>{const t=db.transaction('films',mode);const q=fn(t.objectStore('films'));t.oncomplete=()=>ok(q&&q.result);t.onerror=()=>ko(t.error)})};
+const txs=async(store,mode,fn)=>{const db=await dbP;return new Promise((ok,ko)=>{const t=db.transaction(store,mode);const q=fn(t.objectStore(store));t.oncomplete=()=>ok(q&&q.result);t.onerror=()=>ko(t.error)})};
+const tx=(mode,fn)=>txs('films',mode,fn);
 const dbAll=()=>tx('readonly',s=>s.getAll());
 const dbPut=o=>tx('readwrite',s=>s.put(o));
 const dbDel=id=>tx('readwrite',s=>s.delete(id));
@@ -181,7 +192,7 @@ const tmdb=async(p,q={})=>{const r=await fetch(`https://api.themoviedb.org/3${p}
   if(!r.ok)throw new Error('TMDB '+r.status);return r.json()};
 const searchTmdb=q=>tmdb('/search/movie',{query:q,include_adult:'false'}).then(d=>d.results||[]);
 
-async function addFromTmdb(id,ean,fmt,sealed,shelf){
+async function addFromTmdb(id,ean,fmt,sealed,shelf,x={}){
   toast('Salvataggio…');
   const d=await tmdb('/movie/'+id,{append_to_response:'credits'});
   const poster=await posterData(d.poster_path)||null;
@@ -190,7 +201,7 @@ async function addFromTmdb(id,ean,fmt,sealed,shelf){
     overview:d.overview,runtime:d.runtime,genres:(d.genres||[]).map(g=>g.name),
     director:crew.filter(c=>c.job==='Director').map(c=>c.name).join(', '),
     cast:(d.credits?.cast||[]).slice(0,5).map(c=>c.name).join(', '),
-    rating:d.vote_average?+d.vote_average.toFixed(1):null,format:fmt,sealed:!!sealed,shelf:shelf||'',notes:'',ean:ean||'',poster,posterPath:d.poster_path,added:Date.now()});
+    rating:d.vote_average?+d.vote_average.toFixed(1):null,format:fmt,sealed:!!sealed,shelf:shelf||'',steelbook:!!x.steelbook,numbered:!!x.numbered,numNo:x.numNo||'',numTot:x.numTot||'',notes:'',ean:ean||'',poster,posterPath:d.poster_path,added:Date.now()});
   toast(`Aggiunto: ${d.title} (${FORMATS[fmt]})`);
 }
 
@@ -232,7 +243,7 @@ function cardLocal(g){const f=g[0];
   return `<div class="card"><img class="p" data-lid="${f.id}" alt=""><div style="flex:1;min-width:0"><div class="t">${esc(f.title)}</div>
   <div class="meta">${esc(f.year)}${f.runtime?' · '+f.runtime+' min':''}${f.rating?' · ★ '+f.rating:''}${f.director?' · '+esc(f.director):''}</div>
   <details><summary>Dettagli</summary><p>${esc(f.overview)}</p><p class="meta">${f.genres?.length?esc(f.genres.join(', '))+'<br>':''}${f.cast?'Cast: '+esc(f.cast):''}</p></details>
-  ${g.map(x=>`<div class="acts">${tagH(x.format)}${x.sealed?'<span class="tag sl">Sigillato</span>':''}${x.shelf?`<span class="tag sh">Scaffale ${x.shelf}</span>`:''}<button class="btn ghost" data-edit="${x.id}">Modifica</button><button class="btn del" data-del="${x.id}">Elimina</button></div>${x.notes?`<div class="meta">${esc(x.notes)}</div>`:''}`).join('')}</div></div>`}
+  ${g.map(x=>`<div class="acts">${tagH(x.format)}${x.sealed?'<span class="tag sl">Sigillato</span>':''}${x.shelf?`<span class="tag sh">Scaffale ${x.shelf}</span>`:''}${x.steelbook?'<span class="tag sb">SteelBook</span>':''}${x.numbered?`<span class="tag nm">Numerata${x.numNo&&x.numTot?' '+x.numNo+'/'+x.numTot:''}</span>`:''}<button class="btn ghost" data-edit="${x.id}">Modifica</button><button class="btn del" data-del="${x.id}">Elimina</button></div>${x.notes?`<div class="meta">${esc(x.notes)}</div>`:''}`).join('')}</div></div>`}
 
 /* ---------- Aggiungi ---------- */
 let lastEan='';
@@ -273,7 +284,7 @@ $('#fbGo').onclick=fbGo;$('#fbq').onkeydown=e=>{if(e.key==='Enter')fbGo()};
 const fetchT=(u,ms=7000)=>{const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);return fetch(u,{signal:c.signal}).finally(()=>clearTimeout(t))};
 const PROXIES=[u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),u=>'https://corsproxy.io/?'+encodeURIComponent(u)];
 const gcfg=()=>{try{return JSON.parse(localStorage.getItem('gcse')||'{}')}catch(e){return {}}};
-const WORKER_URL='https://twilight-hall-16ea.gpacio666.workers.dev/'; /* indirizzo del tuo Worker, es. 'https://cineteca.tuonome.workers.dev' */
+const WORKER_URL='https://twilight-hall-16ea.gpacio666.workers.dev'; /* indirizzo del tuo Worker, es. 'https://cineteca.tuonome.workers.dev' */
 async function webResults(ean){
   if(WORKER_URL){try{const r=await fetchT(WORKER_URL+'?ean='+ean,10000);if(r.ok){const l=((await r.json()).titles||[]);if(l.length)return l}}catch(e){}}
   const g=gcfg();
@@ -292,15 +303,16 @@ async function webResults(ean){
 }
 const JUNK=/amazon|ebay|unieuro|mediaworld|ibs\b|libraccio|feltrinelli|libreria|youtube|wikipedia|google|trovaprezzi|idealo|subito|facebook|instagram|pinterest|acquista|prezzo|offerte|spedizione|\.(it|com|net|org|eu)\b|barcode|\bean\b|\bupc\b|gtin|^film$/i;
 function titlesFrom(raws,ean){
-  const out=[];
+  const full=[],first=[];
   for(const raw of raws){
-    for(const sg of raw.replace(ean,' ').split(/\s[-–—|·»]\s|\s?[|»]\s?|:\s/)){
-      const t=cleanTitle(sg);
-      if(t.length>=2&&t.length<80&&/\p{L}/u.test(t)&&!JUNK.test(t)){out.push(t);break}
-    }
+    const segs=raw.replace(ean,' ').split(/\s[-–—|·»]\s|\s?[|»]\s?|:\s/).map(t=>cleanTitle(stripDist(t))).filter(t=>t.length>=2&&t.length<80&&/\p{L}/u.test(t));
+    const good=[];for(const t of segs){if(JUNK.test(t)){if(good.length)break;continue}good.push(t)}
+    if(good.length){full.push(good.join(' - '));first.push(good[0])}
   }
-  const cnt={};out.forEach(t=>{const k=t.toLowerCase();cnt[k]=(cnt[k]||0)+1});
-  return [...new Set(out.map(t=>t.toLowerCase()))].sort((a,b)=>cnt[b]-cnt[a]).map(k=>out.find(t=>t.toLowerCase()===k));
+  const cnt={};full.forEach(t=>{const k=t.toLowerCase();cnt[k]=(cnt[k]||0)+1});
+  const uniq=a=>[...new Set(a.map(t=>t.toLowerCase()))].map(k=>a.find(t=>t.toLowerCase()===k));
+  /* prima i titoli completi più frequenti (es. "Avatar - La via dell'acqua"), poi le sole prime parti */
+  return uniq([...uniq(full).sort((a,b)=>cnt[b.toLowerCase()]-cnt[a.toLowerCase()]||b.length-a.length),...first]);
 }
 const blKey=()=>{try{return localStorage.getItem('blkey')||''}catch(e){return ''}};
 async function dbTitles(ean){ /* database di codici commerciali: Barcode Lookup (con chiave), poi UPCitemdb */
@@ -313,7 +325,7 @@ async function dbTitles(ean){ /* database di codici commerciali: Barcode Lookup 
 }
 async function webTitle(ean){
   let raws=await dbTitles(ean);
-  if(!raws.length)raws=(await webResults(ean)).filter(r=>/blu-?\s?ray|\bdvd\b|\b4k\b|uhd|film|steelbook|edizione/i.test(r)); /* se i database non lo conoscono, ricerca web */if(!raws.length)return null;
+  if(!raws.length)raws=(await webResults(ean)).filter(r=>/blu-?\s?ray|\bdvd\b|\b4k\b|uhd|film|steelbook|edizione|amazon|ibs|mediaworld|unieuro|libreria|eagle|warner|sony|universal|lucky red|01 distribution|medusa|koch|midnight|plaion/i.test(r)); /* se i database non lo conoscono, ricerca web */if(!raws.length)return null;
   const titles=titlesFrom(raws,ean);if(!titles.length)return null;
   return {titles:titles.slice(0,4),fmt:detectFmt(raws.join(' '))};
 }
@@ -333,7 +345,7 @@ async function doAdd(id,ean,ask,btn){
   const dup=(await dbAll()).find(x=>x.tmdbId==id&&x.format===f);
   if(dup&&!confirm('Hai già questo film in '+FORMATS[f]+'. Aggiungerlo di nuovo?'))return;
   btn.disabled=true;
-  try{await addFromTmdb(id,ean,f,sealed,shelf);if(!ask)lastEan='';runList()}catch(err){toast('Errore: '+err.message)}
+  try{await addFromTmdb(id,ean,f,sealed,shelf,r);if(!ask)lastEan='';runList()}catch(err){toast('Errore: '+err.message)}
   btn.disabled=false}
 function sheet({head,film,withFields}){return new Promise(res=>{
   let f=film.format||'';
@@ -344,14 +356,18 @@ function sheet({head,film,withFields}){return new Promise(res=>{
   <div class="meta" style="margin:12px 0 4px">Scaffale</div>
   <select id="sSh"><option value="">—</option>${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option value="${n}" ${film.shelf==n?'selected':''}>${n}</option>`).join('')}</select>
   <label class="chk"><input type="checkbox" id="sS" ${film.sealed?'checked':''}> Disco sigillato</label>
+  <label class="chk"><input type="checkbox" id="sSb" ${film.steelbook?'checked':''}> SteelBook</label>
+  <label class="chk"><input type="checkbox" id="sNm" ${film.numbered?'checked':''}> Edizione speciale numerata</label>
+  <div id="sNb" style="display:${film.numbered?'flex':'none'};gap:8px;align-items:center;margin-bottom:6px"><input type="text" inputmode="numeric" id="sNn" placeholder="N°" value="${esc(film.numNo||'')}"><b>/</b><input type="text" inputmode="numeric" id="sNt" placeholder="Totale" value="${esc(film.numTot||'')}"></div>
   ${withFields?`<textarea id="sN" rows="2" placeholder="Note (edizione, condizione, dove l'hai preso…)">${esc(film.notes||'')}</textarea>`:''}
   <div class="row" style="margin-top:12px"><button class="btn ghost" id="sX" style="flex:1">Annulla</button><button class="btn" id="sOK" style="flex:2">${withFields?'Salva':'Aggiungi'}</button></div>`;
   $('#sheet').classList.remove('hide');
   const close=v=>{$('#sheet').classList.add('hide');res(v)};
   $('#sF').onclick=e=>{const k=e.target.dataset.f;if(!k)return;f=k;[...$('#sF').children].forEach(x=>x.classList.toggle('on',x.dataset.f===k))};
   $('#sX').onclick=()=>close(null);
+  $('#sNm').onchange=()=>{$('#sNb').style.display=$('#sNm').checked?'flex':'none'};
   $('#sOK').onclick=()=>{if(!f){toast('Scegli il supporto');return}
-    close({format:f,sealed:$('#sS').checked,shelf:$('#sSh').value,title:withFields?$('#sT').value.trim():'',year:withFields?$('#sY').value.trim():'',notes:withFields?$('#sN').value.trim():''})};
+    close({format:f,sealed:$('#sS').checked,shelf:$('#sSh').value,steelbook:$('#sSb').checked,numbered:$('#sNm').checked,numNo:$('#sNn').value.replace(/\D/g,''),numTot:$('#sNt').value.replace(/\D/g,''),title:withFields?$('#sT').value.trim():'',year:withFields?$('#sY').value.trim():'',notes:withFields?$('#sN').value.trim():''})};
 })}
 
 /* Codice a barre da foto */
@@ -467,7 +483,7 @@ async function renderLocal(q,st,box){
   const all=(await dbAll()).sort((a,b)=>a.title.localeCompare(b.title,'it'));
   const groups={};all.forEach(f=>(groups[f.tmdbId||f.title+f.year]??=[]).push(f));
   const n=q.toLowerCase();
-  const list=Object.values(groups).filter(g=>!n||g.some(f=>[f.title,f.original,f.director,f.year,f.cast,FORMATS[f.format],f.notes,f.ean,f.sealed?'sigillato':'',f.shelf?'scaffale '+f.shelf:''].join(' ').toLowerCase().includes(n)));
+  const list=Object.values(groups).filter(g=>!n||g.some(f=>[f.title,f.original,f.director,f.year,f.cast,FORMATS[f.format],f.notes,f.ean,f.sealed?'sigillato':'',f.shelf?'scaffale '+f.shelf:'',f.steelbook?'steelbook':'',f.numbered?'numerata '+numStr(f):''].join(' ').toLowerCase().includes(n)));
   st.textContent=`${list.length} titoli · ${all.length} dischi`+(n?' (filtrati)':'');
   box.innerHTML=list.length?list.map(cardLocal).join(''):'<div class="meta">Nessun film. Vai su “Aggiungi” per scansionare il primo.</div>';
   hydrate(box)}
@@ -492,15 +508,50 @@ async function localActions(e){const d=e.target.dataset;
   if(d.del&&confirm('Eliminare questo disco dalla collezione?')){await dbDel(+d.del);refresh()}
   if(d.edit){const f=(await dbAll()).find(x=>x.id==d.edit);
     const r=await sheet({head:'Modifica',film:f,withFields:true});
-    if(r){Object.assign(f,{format:r.format,sealed:r.sealed,shelf:r.shelf,notes:r.notes,year:r.year});if(r.title)f.title=r.title;await dbPut(f);toast('Salvato');refresh()}}}
+    if(r){Object.assign(f,{format:r.format,sealed:r.sealed,shelf:r.shelf,steelbook:r.steelbook,numbered:r.numbered,numNo:r.numNo,numTot:r.numTot,notes:r.notes,year:r.year});if(r.title)f.title=r.title;await dbPut(f);toast('Salvato');refresh()}}}
 $('#res2').onclick=localActions;$('#res3').onclick=localActions;
 
 /* ---------- Backup ---------- */
-$('#bExp').onclick=async()=>{
-  const all=await dbAll();
-  for(const f of all){if(f.poster instanceof Blob){f.poster=await new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result);x.readAsDataURL(f.poster)})}}
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(all)],{type:'application/json'}));
-  a.download='cineteca-backup.json';a.click()};
+$('#bExp').onclick=()=>saveBackupFile();
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const numStr=f=>f.numbered?(f.numNo&&f.numTot?f.numNo+'/'+f.numTot:'Sì'):'';
+const snapshot=async()=>(await dbAll()).map(({poster,...r})=>r); /* senza locandine: si riscaricano da TMDB */
+async function saveBackupFile(){
+  const data=await snapshot();
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));
+  a.download='cineteca-backup-'+today()+'.json';a.click();
+  try{localStorage.setItem('lastFile',today())}catch(e){}
+  $('#bk').classList.add('hide');toast('Backup salvato (cartella Download)')}
+async function autoBackup(){
+  const all=await snapshot();if(!all.length)return;
+  const day=today();
+  if(!await txs('backups','readonly',s=>s.get(day)))await txs('backups','readwrite',s=>s.put({day,at:Date.now(),count:all.length,data:JSON.stringify(all)}));
+  const keys=(await txs('backups','readonly',s=>s.getAllKeys())).sort().reverse();
+  for(const k of keys.slice(14))await txs('backups','readwrite',s=>s.delete(k));
+  let last='';try{last=localStorage.getItem('lastFile')||''}catch(e){}
+  $('#bk').classList.toggle('hide',last===day)}
+$('#bkGo').onclick=saveBackupFile;$('#bkX').onclick=()=>$('#bk').classList.add('hide');
+$('#bXls').onclick=async()=>{
+  if(!window.XLSX){toast('Libreria Excel non caricata: serve la connessione');return}
+  const all=(await dbAll()).sort((a,b)=>a.title.localeCompare(b.title,'it'));
+  if(!all.length){toast('La collezione è vuota');return}
+  const rows=all.map(f=>({'Titolo':f.title,'Titolo originale':f.original||'','Anno':f.year||'','Formato':FORMATS[f.format]||'','Sigillato':f.sealed?'Sì':'No','SteelBook':f.steelbook?'Sì':'No','Edizione numerata':numStr(f),'Scaffale':f.shelf||'','Regista':f.director||'','Generi':(f.genres||[]).join(', '),'Durata (min)':f.runtime||'','Voto TMDB':f.rating||'','Cast':f.cast||'','EAN':f.ean||'','Note':f.notes||'','ID TMDB':f.tmdbId||'','Aggiunto il':f.added?new Date(f.added).toLocaleDateString('it-IT'):''}));
+  const ws=XLSX.utils.json_to_sheet(rows);
+  ws['!cols']=[34,30,6,10,10,10,16,9,24,24,12,10,40,16,30,10,12].map(w=>({wch:w}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Collezione');
+  XLSX.writeFile(wb,'cineteca-'+today()+'.xlsx');toast('File Excel creato (cartella Download)')};
+$('#bRes').onclick=async()=>{
+  const list=(await txs('backups','readonly',s=>s.getAll())).sort((a,b)=>b.day.localeCompare(a.day));
+  $('#sbox').innerHTML='<h3 style="margin:0 0 10px">Backup automatici</h3><div class="meta" style="margin-bottom:8px">Uno al giorno, gli ultimi 14. Ripristinare sostituisce la collezione attuale.</div>'+
+    (list.length?list.map(b=>`<div class="acts" style="justify-content:space-between;margin:6px 0"><span>${b.day} · ${b.count} dischi</span><button class="btn ghost" data-rs="${b.day}">Ripristina</button></div>`).join(''):'<div class="meta">Ancora nessun backup.</div>')+
+    '<div class="row" style="margin-top:12px"><button class="btn ghost" id="rsX" style="flex:1">Chiudi</button></div>';
+  $('#sheet').classList.remove('hide');
+  $('#rsX').onclick=()=>$('#sheet').classList.add('hide');
+  $('#sbox').onclick=async e=>{const day=e.target.dataset.rs;if(!day)return;
+    const b=list.find(x=>x.day===day);if(!b||!confirm('Sostituire la collezione attuale con il backup del '+day+'?'))return;
+    await txs('films','readwrite',s=>s.clear());
+    for(const o of JSON.parse(b.data)){delete o.id;await dbPut(o)}
+    $('#sheet').classList.add('hide');toast('Backup ripristinato');refresh()}};
 $('#bImp').onclick=()=>$('#fImp').click();
 $('#fImp').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
   const list=JSON.parse(await f.text());
@@ -508,6 +559,7 @@ $('#fImp').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)
   toast(list.length+' film importati');refresh()};
 
 runList();
+autoBackup();document.addEventListener('visibilitychange',()=>{if(!document.hidden)autoBackup()});
 if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script>
 </body>
