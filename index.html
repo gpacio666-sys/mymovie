@@ -112,6 +112,7 @@ nav button.on::after{content:"";position:absolute;left:22%;right:22%;bottom:4px;
 .phbox{flex:1;height:96px;border:2px dashed var(--line);border-radius:12px;display:grid;place-items:center;color:var(--mute);font-weight:700;background:center/cover no-repeat;position:relative;cursor:pointer}
 .phbox.has{border-style:solid}.phbox.has span{background:#000a;color:#fff;padding:2px 8px;border-radius:8px}
 .phx{position:absolute;top:4px;right:4px;width:28px;height:28px;border-radius:50%;border:0;background:#000c;color:#fff;font-size:17px;line-height:1}
+.tag.bx{background:#b45309;color:#fff}.tag.bx2{background:#6b7280;color:#fff}
 </style>
 </head>
 <body>
@@ -201,15 +202,20 @@ async function photoData(file,max=1000,q=.75){
 function zoom(src){
   $('#sbox').innerHTML=`<img src="${src}" style="width:100%;border-radius:12px"><div class="row" style="margin-top:10px"><button class="btn ghost" id="zX" style="flex:1">Chiudi</button></div>`;
   $('#sheet').classList.remove('hide');$('#zX').onclick=()=>$('#sheet').classList.add('hide')}
-const searchTmdb=q=>tmdb('/search/multi',{query:q,include_adult:'false'}).then(d=>(d.results||[]).filter(r=>r.media_type==='movie'||r.media_type==='tv')
-  .map(r=>r.media_type==='tv'?{...r,kind:'tv',title:r.name,original_title:r.original_name,release_date:r.first_air_date}:{...r,kind:'movie'}));
+let boxKids={};
+const searchTmdb=async q=>{
+  const [m,c]=await Promise.all([tmdb('/search/multi',{query:q,include_adult:'false'}),tmdb('/search/collection',{query:q}).catch(()=>({results:[]}))]);
+  const films=(m.results||[]).filter(r=>r.media_type==='movie'||r.media_type==='tv')
+    .map(r=>r.media_type==='tv'?{...r,kind:'tv',title:r.name,original_title:r.original_name,release_date:r.first_air_date}:{...r,kind:'movie'});
+  const cols=(c.results||[]).slice(0,3).map(r=>({id:r.id,kind:'collection',title:r.name,original_title:r.original_name,release_date:'',poster_path:r.poster_path,overview:r.overview}));
+  return [...films.slice(0,7),...cols,...films.slice(7)]};
 
 async function addFromTmdb(id,ean,fmt,sealed,shelf,x={},kind='movie'){
   toast('Salvataggio…');
   const d=await tmdb('/'+(kind==='tv'?'tv':'movie')+'/'+id,{append_to_response:'credits'});
   const poster=await posterData(d.poster_path)||null;
   const crew=d.credits?.crew||[];
-  await dbPut({tmdbId:d.id,kind:kind==='tv'?'tv':'movie',seasons:d.number_of_seasons||'',title:d.title||d.name,original:d.original_title||d.original_name,year:(d.release_date||d.first_air_date||'').slice(0,4),photoFront:x.photoFront||'',photoBack:x.photoBack||'',
+  await dbPut({tmdbId:d.id,kind:kind==='tv'?'tv':'movie',seasons:d.number_of_seasons||'',title:d.title||d.name,original:d.original_title||d.original_name,year:(d.release_date||d.first_air_date||'').slice(0,4),photoFront:x.photoFront||'',photoBack:x.photoBack||'',boxId:x.boxId||'',boxTitle:x.boxTitle||'',
     overview:d.overview,runtime:kind==='tv'?(d.episode_run_time?.[0]||''):d.runtime,genres:(d.genres||[]).map(g=>g.name),
     director:kind==='tv'?(d.created_by||[]).map(c=>c.name).join(', '):crew.filter(c=>c.job==='Director').map(c=>c.name).join(', '),
     cast:(d.credits?.cast||[]).slice(0,5).map(c=>c.name).join(', '),
@@ -228,7 +234,7 @@ async function hydrate(root){
   const all=await dbAll();
   ims.forEach(async im=>{const f=all.find(x=>x.id==im.dataset.lid);if(!f)return;
     let s=f.poster;if(s instanceof Blob)s=await toDataURL(s);
-    if(!s){try{let pp=f.posterPath;if(!pp){pp=(await tmdb('/'+(f.kind==='tv'?'tv':'movie')+'/'+f.tmdbId)).poster_path;f.posterPath=pp}
+    if(!s){try{let pp=f.posterPath;if(!pp&&!f.isBox){pp=(await tmdb('/'+(f.kind==='tv'?'tv':'movie')+'/'+f.tmdbId)).poster_path;f.posterPath=pp}
       s=await posterData(pp);if(s){f.poster=s;await dbPut(f)}}catch(e){}}
     if(s)im.src=s});
 }
@@ -248,13 +254,13 @@ const tagH=f=>`<span class="tag ${f}">${FORMATS[f]}</span>`;
 function cardTmdb(m){
   const img=m.poster_path?`<img class="p" data-pp="${m.poster_path}" src="https://image.tmdb.org/t/p/w154${m.poster_path}" alt="">`:'<div class="ph"></div>';
   return `<div class="card">${img}<div style="flex:1;min-width:0"><div class="t">${esc(m.title)}</div>
-  <div class="meta">${(m.release_date||'').slice(0,4)||'—'}${m.kind==='tv'?' · Serie TV':''}${m.original_title&&m.original_title!==m.title?' · '+esc(m.original_title):''}</div>
+  <div class="meta">${(m.release_date||'').slice(0,4)||'—'}${m.kind==='tv'?' · Serie TV':''}${m.kind==='collection'?' · Raccolta / cofanetto':''}${m.original_title&&m.original_title!==m.title?' · '+esc(m.original_title):''}</div>
   ${m.overview?`<details><summary>Trama</summary><p>${esc(m.overview)}</p></details>`:''}
-  <div class="acts"><button class="btn" data-add="${m.id}" data-kind="${m.kind||'movie'}">Aggiungi</button></div></div></div>`}
+  <div class="acts"><button class="btn" data-add="${m.id}" data-kind="${m.kind||'movie'}">${m.kind==='collection'?'Aggiungi come cofanetto':'Aggiungi'}</button></div></div></div>`}
 function cardLocal(g){const f=g[0];
   return `<div class="card"><img class="p" data-lid="${f.id}" alt=""><div style="flex:1;min-width:0"><div class="t">${esc(f.title)}</div>
-  <div class="meta">${f.kind==='tv'?'<span class="tag tv">Serie TV</span>':''}${esc(f.year)}${f.kind==='tv'&&f.seasons?' · '+f.seasons+' stagioni':''}${f.runtime?' · '+f.runtime+' min':''}${f.rating?' · ★ '+f.rating:''}${f.director?' · '+esc(f.director):''}</div>
-  <details><summary>Dettagli</summary><p>${esc(f.overview)}</p><p class="meta">${f.genres?.length?esc(f.genres.join(', '))+'<br>':''}${f.cast?'Cast: '+esc(f.cast):''}</p></details>
+  <div class="meta">${f.isBox?'<span class="tag bx">Cofanetto</span>':''}${f.boxTitle?`<span class="tag bx2">Nel cofanetto: ${esc(f.boxTitle)}</span>`:''}${f.kind==='tv'?'<span class="tag tv">Serie TV</span>':''}${esc(f.year)}${f.kind==='tv'&&f.seasons?' · '+f.seasons+' stagioni':''}${f.runtime?' · '+f.runtime+' min':''}${f.rating?' · ★ '+f.rating:''}${f.director?' · '+esc(f.director):''}</div>
+  <details><summary>Dettagli</summary>${f.isBox&&boxKids[f.id]?.length?`<p><b>Contiene ${boxKids[f.id].length} film:</b> ${boxKids[f.id].map(esc).join(' · ')}</p>`:''}<p>${esc(f.overview)}</p><p class="meta">${f.genres?.length?esc(f.genres.join(', '))+'<br>':''}${f.cast?'Cast: '+esc(f.cast):''}</p></details>
   ${g.map(x=>`<div class="acts">${tagH(x.format)}${x.sealed?'<span class="tag sl">Sigillato</span>':''}${x.shelf?`<span class="tag sh">Scaffale ${x.shelf}</span>`:''}${x.steelbook?'<span class="tag sb">SteelBook</span>':''}${x.numbered?`<span class="tag nm">Numerata${x.numNo&&x.numTot?' '+x.numNo+'/'+x.numTot:''}</span>`:''}<button class="btn ghost" data-edit="${x.id}">Modifica</button><button class="btn del" data-del="${x.id}">Elimina</button></div>${x.photoFront||x.photoBack?`<div class="acts">${x.photoFront?`<button class="btn ghost" data-ph="${x.id}|F">Foto fronte</button>`:''}${x.photoBack?`<button class="btn ghost" data-ph="${x.id}|B">Foto retro</button>`:''}</div>`:''}${x.notes?`<div class="meta">${esc(x.notes)}</div>`:''}`).join('')}</div></div>`}
 
 /* ---------- Aggiungi ---------- */
@@ -353,17 +359,36 @@ $('#bManual').onclick=manualGo;
 $('#manual').onkeydown=e=>{if(e.key==='Enter')manualGo()};
 $('#res1').onclick=e=>{const id=e.target.dataset.add;if(id)doAdd(+id,lastEan,false,e.target,e.target.dataset.kind||'movie')};
 async function doAdd(id,ean,ask,btn,kind='movie'){
+  if(kind==='collection'){btn.disabled=true;try{await boxFlow(id,ean,ask?'':hintFmt,{})}catch(err){toast('Errore: '+err.message)}btn.disabled=false;return}
   const r=await sheet({head:'Aggiungi alla collezione',film:{format:ask?'':hintFmt,sealed:false,shelf:''},withFields:false});
   if(!r)return;const f=r.format,sealed=r.sealed,shelf=r.shelf;
+  if(r.box){btn.disabled=true;
+    try{const d=await tmdb('/'+(kind==='tv'?'tv':'movie')+'/'+id);
+      if(d.belongs_to_collection)await boxFlow(d.belongs_to_collection.id,ean,'',r);
+      else toast('TMDb non ha una raccolta per questo titolo: cerca il nome del cofanetto')}
+    catch(err){toast('Errore: '+err.message)}btn.disabled=false;return}
   const dup=(await dbAll()).find(x=>x.tmdbId==id&&(x.kind||'movie')===kind&&x.format===f);
   if(dup&&!confirm('Hai già questo film in '+FORMATS[f]+'. Aggiungerlo di nuovo?'))return;
   btn.disabled=true;
   try{await addFromTmdb(id,ean,f,sealed,shelf,r,kind);if(!ask)lastEan='';runList()}catch(err){toast('Errore: '+err.message)}
   btn.disabled=false}
-function sheet({head,film,withFields}){return new Promise(res=>{
+async function boxFlow(colId,ean,fmtHint,pre){
+  const d=await tmdb('/collection/'+colId);
+  const parts=(d.parts||[]).slice().sort((a,b)=>(a.release_date||'9').localeCompare(b.release_date||'9')).map(p=>({id:p.id,title:p.title,year:(p.release_date||'').slice(0,4)}));
+  const r=await sheet({head:'Aggiungi cofanetto',film:{title:d.name,format:pre.format||fmtHint||'',sealed:!!pre.sealed,shelf:pre.shelf||'',steelbook:!!pre.steelbook,numbered:!!pre.numbered,numNo:pre.numNo||'',numTot:pre.numTot||'',photoFront:pre.photoFront||'',photoBack:pre.photoBack||''},withFields:false,withTitle:true,parts});
+  if(!r)return;
+  const name=r.title||d.name,yrs=parts.filter(p=>r.parts.includes(p.id)&&p.year).map(p=>+p.year),a=Math.min(...yrs),b=Math.max(...yrs);
+  const boxId=await dbPut({isBox:true,kind:'box',collectionId:d.id,title:name,original:d.name,year:yrs.length?(a===b?''+a:a+'–'+b):'',overview:d.overview||'',
+    posterPath:d.poster_path,poster:await posterData(d.poster_path)||null,format:r.format,sealed:r.sealed,steelbook:r.steelbook,numbered:r.numbered,numNo:r.numNo,numTot:r.numTot,
+    shelf:r.shelf,photoFront:r.photoFront,photoBack:r.photoBack,ean:ean||'',notes:'',added:Date.now()});
+  let n=0;
+  for(const pid of r.parts){n++;toast(`Cofanetto: film ${n} di ${r.parts.length}…`);
+    try{await addFromTmdb(pid,'',r.format,r.sealed,r.shelf,{steelbook:r.steelbook,boxId,boxTitle:name},'movie')}catch(e){}}
+  toast(`Cofanetto aggiunto con ${r.parts.length} film`);runList();if(where==='local')runFind()}
+function sheet({head,film,withFields,withTitle,parts}){return new Promise(res=>{
   let f=film.format||'';
   $('#sbox').innerHTML=`<h3 style="margin:0 0 10px">${esc(head)}</h3>
-  ${withFields?`<input type="text" id="sT" value="${esc(film.title)}"><input type="text" id="sY" inputmode="numeric" placeholder="Anno" value="${esc(film.year)}" style="margin-top:8px">`:''}
+  ${withFields||withTitle?`<input type="text" id="sT" value="${esc(film.title)}">`:''}${withFields?`<input type="text" id="sY" inputmode="numeric" placeholder="Anno" value="${esc(film.year)}" style="margin-top:8px">`:''}
   <div class="meta" style="margin:10px 0 4px">Supporto</div>
   <div class="seg" id="sF" style="margin:0">${Object.entries(FORMATS).map(([k,v])=>`<button data-f="${k}" class="${k===f?'on':''}">${v}</button>`).join('')}</div>
   <div class="meta" style="margin:12px 0 4px">Scaffale</div>
@@ -373,6 +398,8 @@ function sheet({head,film,withFields}){return new Promise(res=>{
   <label class="chk"><input type="checkbox" id="sNm" ${film.numbered?'checked':''}> Edizione speciale numerata</label>
   <div id="sNb" style="display:${film.numbered?'flex':'none'};gap:8px;align-items:center;margin-bottom:6px"><input type="text" inputmode="numeric" id="sNn" placeholder="N°" value="${esc(film.numNo||'')}"><b>/</b><input type="text" inputmode="numeric" id="sNt" placeholder="Totale" value="${esc(film.numTot||'')}"></div>
   ${withFields?`<textarea id="sN" rows="2" placeholder="Note (edizione, condizione, dove l'hai preso…)">${esc(film.notes||'')}</textarea>`:''}
+  ${parts?`<div class="meta" style="margin:12px 0 4px">Film contenuti (togli la spunta a quelli che non ci sono)</div><div id="sParts" style="max-height:200px;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:4px 10px">${parts.map(p=>`<label class="chk" style="margin:8px 0"><input type="checkbox" data-pid="${p.id}" checked> <span>${esc(p.title)} <span class="meta">${esc(p.year)}</span></span></label>`).join('')}</div>`:''}
+  ${!withFields&&!parts?'<label class="chk"><input type="checkbox" id="sBx"> Cofanetto (raccolta di più film)</label>':''}
   <div class="meta" style="margin:12px 0 4px">Foto del tuo disco (facoltative)</div>
   <div class="row" id="sPh" style="margin-bottom:0"><label class="phbox" id="phF"></label><label class="phbox" id="phB"></label></div>
   <div class="row" style="margin-top:12px"><button class="btn ghost" id="sX" style="flex:1">Annulla</button><button class="btn" id="sOK" style="flex:2">${withFields?'Salva':'Aggiungi'}</button></div>`;
@@ -390,7 +417,7 @@ function sheet({head,film,withFields}){return new Promise(res=>{
   $('#sX').onclick=()=>close(null);
   $('#sNm').onchange=()=>{$('#sNb').style.display=$('#sNm').checked?'flex':'none'};
   $('#sOK').onclick=()=>{if(!f){toast('Scegli il supporto');return}
-    close({format:f,sealed:$('#sS').checked,shelf:$('#sSh').value,photoFront:pf,photoBack:pb,steelbook:$('#sSb').checked,numbered:$('#sNm').checked,numNo:$('#sNn').value.replace(/\D/g,''),numTot:$('#sNt').value.replace(/\D/g,''),title:withFields?$('#sT').value.trim():'',year:withFields?$('#sY').value.trim():'',notes:withFields?$('#sN').value.trim():''})};
+    close({format:f,sealed:$('#sS').checked,shelf:$('#sSh').value,photoFront:pf,photoBack:pb,steelbook:$('#sSb').checked,numbered:$('#sNm').checked,numNo:$('#sNn').value.replace(/\D/g,''),numTot:$('#sNt').value.replace(/\D/g,''),box:!!$('#sBx')?.checked,parts:[...document.querySelectorAll('#sParts input:checked')].map(i=>+i.dataset.pid),title:(withFields||withTitle)?$('#sT').value.trim():'',year:withFields?$('#sY').value.trim():'',notes:withFields?$('#sN').value.trim():''})};
 })}
 
 /* Codice a barre da foto */
@@ -504,9 +531,10 @@ $('#camS').onclick=async()=>{const v=$('#camv');if(!v.videoWidth)return;const m=
 /* ---------- Collezione ---------- */
 async function renderLocal(q,st,box){
   const all=(await dbAll()).sort((a,b)=>a.title.localeCompare(b.title,'it'));
-  const groups={};all.forEach(f=>(groups[(f.kind||'movie')+(f.tmdbId||f.title+f.year)]??=[]).push(f));
+  boxKids={};all.forEach(x=>{if(x.boxId)(boxKids[x.boxId]??=[]).push(x.title)});
+  const groups={};all.forEach(f=>(groups[f.isBox?'box'+f.id:(f.kind||'movie')+(f.tmdbId||f.title+f.year)]??=[]).push(f));
   const n=q.toLowerCase();
-  const list=Object.values(groups).filter(g=>!n||g.some(f=>[f.title,f.original,f.director,f.year,f.cast,FORMATS[f.format],f.notes,f.ean,f.sealed?'sigillato':'',f.shelf?'scaffale '+f.shelf:'',f.steelbook?'steelbook':'',f.numbered?'numerata '+numStr(f):''].join(' ').toLowerCase().includes(n)));
+  const list=Object.values(groups).filter(g=>!n||g.some(f=>[f.title,f.original,f.director,f.year,f.cast,FORMATS[f.format],f.notes,f.ean,f.boxTitle,f.sealed?'sigillato':'',f.shelf?'scaffale '+f.shelf:'',f.steelbook?'steelbook':'',f.numbered?'numerata '+numStr(f):''].join(' ').toLowerCase().includes(n)));
   st.textContent=`${list.length} titoli · ${all.length} dischi`+(n?' (filtrati)':'');
   box.innerHTML=list.length?list.map(cardLocal).join(''):'<div class="meta">Nessun film. Vai su “Aggiungi” per scansionare il primo.</div>';
   hydrate(box)}
@@ -529,10 +557,15 @@ async function runFind(){
 async function localActions(e){const d=e.target.dataset;
   if(d.ph){const [pid,k]=d.ph.split('|');const f=(await dbAll()).find(x=>x.id==pid);const src=f&&(k==='F'?f.photoFront:f.photoBack);if(src)zoom(src);return}
   if(d.add){doAdd(+d.add,'',true,e.target,d.kind||'movie');return}
-  if(d.del&&confirm('Eliminare questo disco dalla collezione?')){await dbDel(+d.del);refresh()}
+  if(d.del){const rec=(await dbAll()).find(x=>x.id==d.del);
+    if(!confirm(rec?.isBox?'Eliminare il cofanetto?':'Eliminare questo disco dalla collezione?'))return;
+    if(rec?.isBox){const kids=(await dbAll()).filter(x=>x.boxId==rec.id);
+      if(kids.length){const all=confirm('Eliminare anche i '+kids.length+' film contenuti?\nOK = elimina anche i film\nAnnulla = tieni i film nella collezione');
+        for(const k of kids){if(all)await dbDel(k.id);else{k.boxId='';k.boxTitle='';await dbPut(k)}}}}
+    await dbDel(+d.del);refresh()}
   if(d.edit){const f=(await dbAll()).find(x=>x.id==d.edit);
     const r=await sheet({head:'Modifica',film:f,withFields:true});
-    if(r){Object.assign(f,{format:r.format,sealed:r.sealed,shelf:r.shelf,steelbook:r.steelbook,numbered:r.numbered,numNo:r.numNo,numTot:r.numTot,photoFront:r.photoFront,photoBack:r.photoBack,notes:r.notes,year:r.year});if(r.title)f.title=r.title;await dbPut(f);toast('Salvato');refresh()}}}
+    if(r){Object.assign(f,{format:r.format,sealed:r.sealed,shelf:r.shelf,steelbook:r.steelbook,numbered:r.numbered,numNo:r.numNo,numTot:r.numTot,photoFront:r.photoFront,photoBack:r.photoBack,notes:r.notes,year:r.year});if(r.title)f.title=r.title;await dbPut(f);if(f.isBox)for(const k of (await dbAll()).filter(x=>x.boxId==f.id)){k.boxTitle=f.title;await dbPut(k)}toast('Salvato');refresh()}}}
 $('#res2').onclick=localActions;$('#res3').onclick=localActions;
 
 /* ---------- Backup ---------- */
@@ -540,6 +573,9 @@ $('#bExp').onclick=()=>saveBackupFile();
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const numStr=f=>f.numbered?(f.numNo&&f.numTot?f.numNo+'/'+f.numTot:'Sì'):'';
 const snapshot=async(photos)=>(await dbAll()).map(({poster,...r})=>{if(!photos){delete r.photoFront;delete r.photoBack}return r}); /* senza locandine: si riscaricano da TMDB */
+async function importList(list){const map={};
+  for(const o of list.filter(x=>x.isBox)){const old=o.id;delete o.id;map[old]=await dbPut(o)}
+  for(const o of list.filter(x=>!x.isBox)){delete o.id;if(o.boxId&&map[o.boxId])o.boxId=map[o.boxId];else if(o.boxId){o.boxId='';o.boxTitle=''}await dbPut(o)}}
 async function saveBackupFile(){
   const data=await snapshot(true);
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));
@@ -559,7 +595,7 @@ $('#bXls').onclick=async()=>{
   if(!window.XLSX){toast('Libreria Excel non caricata: serve la connessione');return}
   const all=(await dbAll()).sort((a,b)=>a.title.localeCompare(b.title,'it'));
   if(!all.length){toast('La collezione è vuota');return}
-  const rows=all.map(f=>({'Titolo':f.title,'Titolo originale':f.original||'','Anno':f.year||'','Formato':FORMATS[f.format]||'','Sigillato':f.sealed?'Sì':'No','SteelBook':f.steelbook?'Sì':'No','Edizione numerata':numStr(f),'Scaffale':f.shelf||'','Regista':f.director||'','Generi':(f.genres||[]).join(', '),'Durata (min)':f.runtime||'','Voto TMDB':f.rating||'','Cast':f.cast||'','EAN':f.ean||'','Note':f.notes||'','ID TMDB':f.tmdbId||'','Tipo':f.kind==='tv'?'Serie TV':'Film','Foto disco':(f.photoFront||f.photoBack)?'Sì':'No','Aggiunto il':f.added?new Date(f.added).toLocaleDateString('it-IT'):''}));
+  const rows=all.map(f=>({'Titolo':f.title,'Titolo originale':f.original||'','Anno':f.year||'','Formato':FORMATS[f.format]||'','Sigillato':f.sealed?'Sì':'No','SteelBook':f.steelbook?'Sì':'No','Edizione numerata':numStr(f),'Scaffale':f.shelf||'','Regista':f.director||'','Generi':(f.genres||[]).join(', '),'Durata (min)':f.runtime||'','Voto TMDB':f.rating||'','Cast':f.cast||'','EAN':f.ean||'','Note':f.notes||'','ID TMDB':f.tmdbId||'','Tipo':f.isBox?'Cofanetto':f.kind==='tv'?'Serie TV':'Film','Nel cofanetto':f.boxTitle||'','Foto disco':(f.photoFront||f.photoBack)?'Sì':'No','Aggiunto il':f.added?new Date(f.added).toLocaleDateString('it-IT'):''}));
   const ws=XLSX.utils.json_to_sheet(rows);
   ws['!cols']=[34,30,6,10,10,10,16,9,24,24,12,10,40,16,30,10,12].map(w=>({wch:w}));
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Collezione');
@@ -575,12 +611,12 @@ $('#bRes').onclick=async()=>{
     const b=list.find(x=>x.day===day);if(!b||!confirm('Sostituire la collezione attuale con il backup del '+day+'?'))return;
     const ph={};(await dbAll()).forEach(f=>{if(f.photoFront||f.photoBack)ph[f.added]=f}); /* le foto non sono nelle copie interne: le conservo */
     await txs('films','readwrite',s=>s.clear());
-    for(const o of JSON.parse(b.data)){delete o.id;const k=ph[o.added];if(k){o.photoFront=k.photoFront;o.photoBack=k.photoBack}await dbPut(o)}
+    for(const o of JSON.parse(b.data)){const k=ph[o.added];if(k){o.photoFront=k.photoFront;o.photoBack=k.photoBack}await dbPut(o)}
     $('#sheet').classList.add('hide');toast('Backup ripristinato');refresh()}};
 $('#bImp').onclick=()=>$('#fImp').click();
 $('#fImp').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
   const list=JSON.parse(await f.text());
-  for(const o of list){delete o.id;await dbPut(o)}
+  await importList(list);
   toast(list.length+' film importati');refresh()};
 
 runList();
