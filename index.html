@@ -113,10 +113,14 @@ nav button.on::after{content:"";position:absolute;left:22%;right:22%;bottom:4px;
 .phbox.has{border-style:solid}.phbox.has span{background:#000a;color:#fff;padding:2px 8px;border-radius:8px}
 .phx{position:absolute;top:4px;right:4px;width:28px;height:28px;border-radius:50%;border:0;background:#000c;color:#fff;font-size:17px;line-height:1}
 .tag.bx{background:#b45309;color:#fff}.tag.bx2{background:#6b7280;color:#fff}
+.gear{margin-left:auto;width:44px;height:44px;flex:none;border-radius:50%;border:1px solid #c9a45c88;background:#ffffff14;color:#e9d9a8;display:grid;place-items:center;padding:0}
+input[type=number]{width:100%;padding:12px;border-radius:12px;border:2px solid var(--line);background:var(--card);color:var(--ink);font-size:16px}
+#sbox input[type=text]{margin-top:4px}
+.big{min-height:152px}
 </style>
 </head>
 <body>
-<header><svg class="reel" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" fill="none" stroke="#c9a45c" stroke-width="3"/><circle cx="32" cy="32" r="6" fill="#c9a45c"/><g fill="#c9a45c"><circle cx="32" cy="14" r="5"/><circle cx="49" cy="26" r="5"/><circle cx="43" cy="46" r="5"/><circle cx="21" cy="46" r="5"/><circle cx="15" cy="26" r="5"/></g></svg><h1>Cineteca</h1></header>
+<header><svg class="reel" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" fill="none" stroke="#c9a45c" stroke-width="3"/><circle cx="32" cy="32" r="6" fill="#c9a45c"/><g fill="#c9a45c"><circle cx="32" cy="14" r="5"/><circle cx="49" cy="26" r="5"/><circle cx="43" cy="46" r="5"/><circle cx="21" cy="46" r="5"/><circle cx="15" cy="26" r="5"/></g></svg><h1>Cineteca</h1><button class="gear" id="gear" aria-label="Impostazioni"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></header>
 <div id="bk" class="bk hide"><span>Backup di oggi pronto</span><button class="btn" id="bkGo">Salva sul telefono</button><button class="btn ghost" id="bkX">Dopo</button></div>
 <main>
   <section id="tab-add">
@@ -175,6 +179,9 @@ nav button.on::after{content:"";position:absolute;left:22%;right:22%;bottom:4px;
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 <script>
 const KEY='6d228c55aeff585e47162e4725eb26fe';
+const CFG_DEF={tmdb:KEY,worker:'https://twilight-hall-16ea.gpacio666.workers.dev',shelves:10,freq:'weekly'};
+let CFG={...CFG_DEF};try{Object.assign(CFG,JSON.parse(localStorage.getItem('cfg')||'{}'))}catch(e){}
+const saveCfg=()=>{try{localStorage.setItem('cfg',JSON.stringify(CFG))}catch(e){toast('Impossibile salvare le impostazioni')}};
 const FORMATS={k4:'4K UHD',bd:'Blu-ray',dvd:'DVD'};
 let where='local', hintFmt='';
 const $=s=>document.querySelector(s);
@@ -193,7 +200,7 @@ const dbPut=o=>tx('readwrite',s=>s.put(o));
 const dbDel=id=>tx('readwrite',s=>s.delete(id));
 
 /* ---------- TMDB ---------- */
-const tmdb=async(p,q={})=>{const r=await fetch(`https://api.themoviedb.org/3${p}?`+new URLSearchParams({api_key:KEY,language:'it-IT',...q}));
+const tmdb=async(p,q={})=>{const r=await fetch(`https://api.themoviedb.org/3${p}?`+new URLSearchParams({api_key:CFG.tmdb,language:'it-IT',...q}));
   if(!r.ok)throw new Error('TMDB '+r.status);return r.json()};
 async function photoData(file,max=1000,q=.75){
   const b=await createImageBitmap(file),k=Math.min(1,max/Math.max(b.width,b.height));
@@ -259,7 +266,7 @@ function cardTmdb(m){
   <div class="acts"><button class="btn" data-add="${m.id}" data-kind="${m.kind||'movie'}">${m.kind==='collection'?'Aggiungi come cofanetto':'Aggiungi'}</button></div></div></div>`}
 function cardLocal(g){const f=g[0];
   return `<div class="card"><img class="p" data-lid="${f.id}" alt=""><div style="flex:1;min-width:0"><div class="t">${esc(f.title)}</div>
-  <div class="meta">${f.isBox?'<span class="tag bx">Cofanetto</span>':''}${f.boxTitle?`<span class="tag bx2">Nel cofanetto: ${esc(f.boxTitle)}</span>`:''}${f.kind==='tv'?'<span class="tag tv">Serie TV</span>':''}${esc(f.year)}${f.kind==='tv'&&f.seasons?' · '+f.seasons+' stagioni':''}${f.runtime?' · '+f.runtime+' min':''}${f.rating?' · ★ '+f.rating:''}${f.director?' · '+esc(f.director):''}</div>
+  <div class="meta">${f.isBox?'<span class="tag bx">Cofanetto</span>':''}${f.boxTitle?`<span class="tag bx2">Nel cofanetto: ${esc(f.boxTitle)}</span>`:''}${f.kind==='tv'?'<span class="tag tv">Serie TV</span>':''}${esc(f.year)}${f.kind==='tv'&&f.seasons?' · '+f.seasons+(f.seasons==1?' stagione':' stagioni'):''}${f.runtime?' · '+f.runtime+' min':''}${f.rating?' · ★ '+f.rating:''}${f.director?' · '+esc(f.director):''}</div>
   <details><summary>Dettagli</summary>${f.isBox&&boxKids[f.id]?.length?`<p><b>Contiene ${boxKids[f.id].length} film:</b> ${boxKids[f.id].map(esc).join(' · ')}</p>`:''}<p>${esc(f.overview)}</p><p class="meta">${f.genres?.length?esc(f.genres.join(', '))+'<br>':''}${f.cast?'Cast: '+esc(f.cast):''}</p></details>
   ${g.map(x=>`<div class="acts">${tagH(x.format)}${x.sealed?'<span class="tag sl">Sigillato</span>':''}${x.shelf?`<span class="tag sh">Scaffale ${x.shelf}</span>`:''}${x.steelbook?'<span class="tag sb">SteelBook</span>':''}${x.numbered?`<span class="tag nm">Numerata${x.numNo&&x.numTot?' '+x.numNo+'/'+x.numTot:''}</span>`:''}<button class="btn ghost" data-edit="${x.id}">Modifica</button><button class="btn del" data-del="${x.id}">Elimina</button></div>${x.photoFront||x.photoBack?`<div class="acts">${x.photoFront?`<button class="btn ghost" data-ph="${x.id}|F">Foto fronte</button>`:''}${x.photoBack?`<button class="btn ghost" data-ph="${x.id}|B">Foto retro</button>`:''}</div>`:''}${x.notes?`<div class="meta">${esc(x.notes)}</div>`:''}`).join('')}</div></div>`}
 
@@ -302,9 +309,8 @@ $('#fbGo').onclick=fbGo;$('#fbq').onkeydown=e=>{if(e.key==='Enter')fbGo()};
 const fetchT=(u,ms=7000)=>{const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);return fetch(u,{signal:c.signal}).finally(()=>clearTimeout(t))};
 const PROXIES=[u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),u=>'https://corsproxy.io/?'+encodeURIComponent(u)];
 const gcfg=()=>{try{return JSON.parse(localStorage.getItem('gcse')||'{}')}catch(e){return {}}};
-const WORKER_URL='https://twilight-hall-16ea.gpacio666.workers.dev'; /* indirizzo del tuo Worker, es. 'https://cineteca.tuonome.workers.dev' */
 async function webResults(ean){
-  if(WORKER_URL){try{const r=await fetchT(WORKER_URL+'?ean='+ean,10000);if(r.ok){const l=((await r.json()).titles||[]);if(l.length)return l}}catch(e){}}
+  if(CFG.worker){try{const r=await fetchT(CFG.worker+'?ean='+ean,10000);if(r.ok){const l=((await r.json()).titles||[]);if(l.length)return l}}catch(e){}}
   const g=gcfg();
   if(g.key&&g.cx){
     try{const r=await fetchT('https://www.googleapis.com/customsearch/v1?'+new URLSearchParams({key:g.key,cx:g.cx,q:ean+' blu-ray dvd film',num:'6',hl:'it'}));
@@ -392,7 +398,7 @@ function sheet({head,film,withFields,withTitle,parts}){return new Promise(res=>{
   <div class="meta" style="margin:10px 0 4px">Supporto</div>
   <div class="seg" id="sF" style="margin:0">${Object.entries(FORMATS).map(([k,v])=>`<button data-f="${k}" class="${k===f?'on':''}">${v}</button>`).join('')}</div>
   <div class="meta" style="margin:12px 0 4px">Scaffale</div>
-  <select id="sSh"><option value="">—</option>${[1,2,3,4,5,6,7,8,9,10].map(n=>`<option value="${n}" ${film.shelf==n?'selected':''}>${n}</option>`).join('')}</select>
+  <select id="sSh"><option value="">—</option>${Array.from({length:Math.max(CFG.shelves,parseInt(film.shelf)||0)},(_,i)=>i+1).map(n=>`<option value="${n}" ${film.shelf==n?'selected':''}>${n}</option>`).join('')}</select>
   <label class="chk"><input type="checkbox" id="sS" ${film.sealed?'checked':''}> Disco sigillato</label>
   <label class="chk"><input type="checkbox" id="sSb" ${film.steelbook?'checked':''}> SteelBook</label>
   <label class="chk"><input type="checkbox" id="sNm" ${film.numbered?'checked':''}> Edizione speciale numerata</label>
@@ -571,6 +577,9 @@ $('#res2').onclick=localActions;$('#res3').onclick=localActions;
 /* ---------- Backup ---------- */
 $('#bExp').onclick=()=>saveBackupFile();
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const periodKey=()=>{const f=CFG.freq;if(f==='daily')return today();if(f==='monthly')return today().slice(0,7);
+  const m=new Date();m.setDate(m.getDate()-((m.getDay()+6)%7));return 'W'+m.getFullYear()+'-'+String(m.getMonth()+1).padStart(2,'0')+'-'+String(m.getDate()).padStart(2,'0')};
+const FREQ={daily:'giornaliero',weekly:'settimanale',monthly:'mensile'};
 const numStr=f=>f.numbered?(f.numNo&&f.numTot?f.numNo+'/'+f.numTot:'Sì'):'';
 const snapshot=async(photos)=>(await dbAll()).map(({poster,...r})=>{if(!photos){delete r.photoFront;delete r.photoBack}return r}); /* senza locandine: si riscaricano da TMDB */
 async function importList(list){const map={};
@@ -580,16 +589,42 @@ async function saveBackupFile(){
   const data=await snapshot(true);
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));
   a.download='cineteca-backup-'+today()+'.json';a.click();
-  try{localStorage.setItem('lastFile',today())}catch(e){}
+  try{localStorage.setItem('lastFile',periodKey());localStorage.setItem('lastFileAt',new Date().toLocaleString('it-IT'))}catch(e){}
   $('#bk').classList.add('hide');toast('Backup salvato (cartella Download)')}
+async function snapNow(){const all=await snapshot();if(!all.length)return;
+  await txs('backups','readwrite',s=>s.put({day:today(),at:Date.now(),count:all.length,data:JSON.stringify(all)}))}
 async function autoBackup(){
   const all=await snapshot();if(!all.length)return;
-  const day=today();
-  if(!await txs('backups','readonly',s=>s.get(day)))await txs('backups','readwrite',s=>s.put({day,at:Date.now(),count:all.length,data:JSON.stringify(all)}));
+  const key=periodKey();let lastA='';try{lastA=localStorage.getItem('lastAuto')||''}catch(e){}
+  if(lastA!==key){await snapNow();try{localStorage.setItem('lastAuto',key)}catch(e){}}
   const keys=(await txs('backups','readonly',s=>s.getAllKeys())).sort().reverse();
   for(const k of keys.slice(14))await txs('backups','readwrite',s=>s.delete(k));
   let last='';try{last=localStorage.getItem('lastFile')||''}catch(e){}
-  $('#bk').classList.toggle('hide',last===day)}
+  $('#bk span').textContent='Backup '+FREQ[CFG.freq]+' da salvare';
+  $('#bk').classList.toggle('hide',last===key)}
+$('#gear').onclick=async()=>{
+  const used=Math.max(0,...(await dbAll()).map(f=>parseInt(f.shelf)||0));
+  let lastAt='';try{lastAt=localStorage.getItem('lastFileAt')||''}catch(e){}
+  $('#sbox').innerHTML=`<h3 style="margin:0 0 6px">Impostazioni</h3>
+  <div class="meta">Chiave TMDb</div><input type="text" id="cT" value="${esc(CFG.tmdb)}" autocapitalize="off" autocomplete="off" spellcheck="false">
+  <div class="meta" style="margin-top:12px">Indirizzo Cloudflare Worker (ricerca da codice a barre)</div><input type="text" id="cW" value="${esc(CFG.worker)}" placeholder="https://…workers.dev" autocapitalize="off" autocomplete="off" spellcheck="false">
+  <div class="meta" style="margin-top:12px">Numero di scaffali</div><input type="number" id="cS" min="${Math.max(1,used)}" max="99" inputmode="numeric" value="${CFG.shelves}">
+  <div class="meta">Scaffale più alto in uso: ${used||'nessuno'} (non puoi scendere sotto questo numero)</div>
+  <div class="meta" style="margin-top:12px">Frequenza del backup</div>
+  <select id="cF">${Object.entries(FREQ).map(([k,v])=>`<option value="${k}" ${CFG.freq===k?'selected':''}>${v[0].toUpperCase()+v.slice(1)}</option>`).join('')}</select>
+  <div class="meta" style="margin-top:6px">${lastAt?'Ultimo file salvato: '+esc(lastAt):'Nessun file di backup salvato finora'}</div>
+  <button class="btn" id="cB" style="width:100%;margin-top:8px">Fai un backup adesso</button>
+  <div class="row" style="margin-top:14px"><button class="btn ghost" id="cX" style="flex:1">Annulla</button><button class="btn" id="cOK" style="flex:2">Salva</button></div>`;
+  $('#sheet').classList.remove('hide');
+  $('#cX').onclick=()=>$('#sheet').classList.add('hide');
+  $('#cB').onclick=async()=>{await snapNow();await saveBackupFile();$('#sheet').classList.add('hide')};
+  $('#cOK').onclick=()=>{
+    const n=parseInt($('#cS').value,10),t=$('#cT').value.trim();
+    if(!t){toast('La chiave TMDb non può essere vuota');return}
+    if(!n||n<1||n>99){toast('Gli scaffali devono essere tra 1 e 99');return}
+    if(n<used){toast('Non può essere minore di '+used+': hai dischi sullo scaffale '+used);return}
+    CFG={tmdb:t,worker:$('#cW').value.trim().replace(/\/+$/,''),shelves:n,freq:$('#cF').value};saveCfg();
+    $('#sheet').classList.add('hide');toast('Impostazioni salvate');autoBackup()}};
 $('#bkGo').onclick=saveBackupFile;$('#bkX').onclick=()=>$('#bk').classList.add('hide');
 $('#bXls').onclick=async()=>{
   if(!window.XLSX){toast('Libreria Excel non caricata: serve la connessione');return}
