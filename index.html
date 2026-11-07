@@ -471,7 +471,7 @@ function sheet({head,film,withFields,withTitle,parts,manual}){return new Promise
   <select id="sSh"><option value="">—</option>${Array.from({length:Math.max(CFG.shelves,parseInt(film.shelf)||0)},(_,i)=>i+1).map(n=>`<option value="${n}" ${film.shelf==n?'selected':''}>${n}</option>`).join('')}</select>
   <div class="meta" style="margin:12px 0 4px">Collana</div>
   <select id="sCo"><option value="">—</option>${[...new Set([...CFG.collane,film.collana].filter(Boolean))].map(c=>`<option ${film.collana===c?'selected':''}>${esc(c)}</option>`).join('')}</select>
-  ${!parts&&!film.isBox&&boxCache.length?`<div class="meta" style="margin:12px 0 4px">Inserisci in un cofanetto già censito</div><select id="sBxId"><option value="">— nessuno —</option>${boxCache.map(b=>`<option value="${b.id}" ${film.boxId==b.id?'selected':''}>${esc(b.title)}${b.format?' · '+FORMATS[b.format]:''}</option>`).join('')}</select>`:''}
+  ${!parts&&!film.isBox&&boxCache.length?`<div class="meta" style="margin:12px 0 4px">Fa parte di un cofanetto già censito?</div><select id="sBxId"><option value="">— nessuno —</option>${boxCache.map(b=>`<option value="${b.id}" ${film.boxId==b.id?'selected':''}>${esc(b.title)}${b.format?' · '+FORMATS[b.format]:''}</option>`).join('')}</select>`:''}
   <label class="chk"><input type="checkbox" id="sS" ${film.sealed?'checked':''}> Disco sigillato</label>
   <label class="chk"><input type="checkbox" id="sSb" ${film.steelbook?'checked':''}> SteelBook</label>
   <label class="chk"><input type="checkbox" id="sNm" ${film.numbered?'checked':''}> Edizione speciale numerata</label>
