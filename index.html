@@ -129,6 +129,10 @@ input[type=date],#sbox select{width:100%;padding:12px;border-radius:12px;border:
 .phbox{height:116px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:8px;cursor:default}.phb2{display:flex;gap:6px}.btn.sm{padding:6px 10px;font-size:13px;background:#ffffffd9;color:#0d1626;border:1px solid var(--line)}
 .tag.co{background:#0f766e;color:#fff}
 #cTabs button{font-size:14px}
+.foot.tools{margin:6px 0 12px;gap:6px}.foot.tools .btn{padding:8px 10px;font-size:13px}
+.kids{margin:-2px 0 12px 20px;padding-left:12px;border-left:2px solid var(--gold)}.kids .card{margin-bottom:8px}
+.tog{border:1px solid var(--line);background:transparent;color:var(--blue);font-weight:700;border-radius:10px;padding:5px 10px;margin:4px 0;font-size:14px}
+.flt{grid-template-columns:repeat(2,minmax(0,1fr))}.flt select{width:100%;min-width:0}
 </style>
 </head>
 <body>
@@ -154,6 +158,14 @@ input[type=date],#sbox select{width:100%;padding:12px;border-radius:12px;border:
   </section>
   <section id="tab-list" class="hide">
     <div class="hd"><span class="ln"></span><h2>La mia collezione</h2><span class="ln"></span></div>
+    <div class="foot tools">
+      <button class="btn" id="bSt">Statistiche</button>
+      <button class="btn" id="bXls">Esporta Excel</button>
+      <button class="btn ghost" id="bExp">Esporta backup</button>
+      <button class="btn ghost" id="bImp">Importa backup</button>
+      <button class="btn ghost" id="bRes">Backup automatici</button>
+      <input type="file" id="fImp" accept="application/json" class="hide">
+    </div>
     <input type="search" id="q3" placeholder="Filtra la tua collezione…">
     <div class="flt" style="margin-top:10px">
       <select id="fF"><option value="">Formato: tutti</option><option value="k4">4K UHD</option><option value="bd">Blu-ray</option><option value="dvd">DVD</option></select>
@@ -163,16 +175,9 @@ input[type=date],#sbox select{width:100%;padding:12px;border-radius:12px;border:
       <select id="fC"><option value="">Collana: tutte</option></select>
       <select id="fO"><option value="title">Ordina per titolo</option><option value="year">Ordina per anno (recenti)</option><option value="added">Ordina per aggiunti di recente</option><option value="shelf">Ordina per scaffale</option><option value="genre">Ordina per genere</option></select>
     </div>
-    <div class="status" id="st3"></div>
+    <div style="display:flex;align-items:center;gap:8px"><div class="status" id="st3" style="flex:1"></div><button class="btn ghost" id="bTogAll" style="display:none;padding:6px 10px;font-size:13px;white-space:nowrap">Espandi tutti</button></div>
     <div id="res3"></div>
-    <div class="foot">
-      <button class="btn" id="bSt">Statistiche</button>
-      <button class="btn" id="bXls">Esporta Excel</button>
-      <button class="btn ghost" id="bExp">Esporta backup</button>
-      <button class="btn ghost" id="bImp">Importa backup</button>
-      <button class="btn ghost" id="bRes">Backup automatici</button>
-      <input type="file" id="fImp" accept="application/json" class="hide">
-    </div>
+    
   </section>
   <section id="tab-find" class="hide">
     <div class="hd"><span class="ln"></span><h2>Cerca un film</h2><span class="ln"></span></div>
@@ -235,7 +240,10 @@ async function photoData(file,max=1000,q=.75){
 function zoom(src){
   $('#sbox').innerHTML=`<img src="${src}" style="width:100%;border-radius:12px"><div class="row" style="margin-top:10px"><button class="btn ghost" id="zX" style="flex:1">Chiudi</button></div>`;
   $('#sheet').classList.remove('hide');$('#zX').onclick=()=>$('#sheet').classList.add('hide')}
-let boxKids={},boxCache=[];
+let boxKids={},boxCache=[],forceOpen=false,boxState={};
+try{boxState=JSON.parse(localStorage.getItem('boxOpen')||'{}')}catch(e){}
+const saveBox=()=>{try{localStorage.setItem('boxOpen',JSON.stringify(boxState))}catch(e){}};
+const boxOpen=id=>forceOpen||!!boxState[id];
 const searchTmdb=async q=>{
   const [m,c]=await Promise.all([tmdb('/search/multi',{query:q,include_adult:'false'}),tmdb('/search/collection',{query:q}).catch(()=>({results:[]}))]);
   const films=(m.results||[]).filter(r=>r.media_type==='movie'||r.media_type==='tv')
@@ -299,7 +307,7 @@ const extraMeta=x=>{const a=[x.price?'Pagato '+eur(x.price):'',x.value?'Valore '
 function cardLocal(g){const f=g[0];
   return `<div class="card"><img class="p" data-lid="${f.id}" alt=""><div style="flex:1;min-width:0"><div class="t">${esc(f.title)}</div>
   <div class="meta">${f.isBox?'<span class="tag bx">Cofanetto</span>':''}${f.boxTitle?`<span class="tag bx2">Nel cofanetto: ${esc(f.boxTitle)}</span>`:''}${f.kind==='tv'?'<span class="tag tv">Serie TV</span>':''}${esc(f.year)}${f.kind==='tv'&&f.seasons?' · '+f.seasons+(f.seasons==1?' stagione':' stagioni'):''}${f.runtime?' · '+f.runtime+' min':''}${f.rating?' · ★ '+f.rating:''}${f.director?' · '+esc(f.director):''}</div>
-  <details><summary>Dettagli</summary>${f.isBox&&boxKids[f.id]?.length?`<p><b>Contiene ${boxKids[f.id].length} film:</b> ${boxKids[f.id].map(esc).join(' · ')}</p>`:''}<p>${esc(f.overview)}</p><p class="meta">${f.genres?.length?esc(f.genres.join(', '))+'<br>':''}${f.cast?'Cast: '+esc(f.cast):''}</p></details>
+  ${f.isBox&&boxKids[f.id]?.length?`<button class="tog" data-tog="${f.id}">${boxOpen(f.id)?'▾':'▸'} ${boxKids[f.id].length} film</button>`:''}<details><summary>Dettagli</summary>${f.isBox&&boxKids[f.id]?.length?`<p><b>Contiene ${boxKids[f.id].length} film:</b> ${boxKids[f.id].map(esc).join(' · ')}</p>`:''}<p>${esc(f.overview)}</p><p class="meta">${f.genres?.length?esc(f.genres.join(', '))+'<br>':''}${f.cast?'Cast: '+esc(f.cast):''}</p></details>
   ${g.map(x=>`<div class="acts">${tagH(x.format)}${x.sealed?'<span class="tag sl">Sigillato</span>':''}${x.shelf?`<span class="tag sh">Scaffale ${x.shelf}</span>`:''}${x.steelbook?'<span class="tag sb">SteelBook</span>':''}${x.numbered?`<span class="tag nm">Numerata${x.numNo&&x.numTot?' '+x.numNo+'/'+x.numTot:''}</span>`:''}${extraTags(x)}<button class="btn ghost" data-edit="${x.id}">Modifica</button><button class="btn del" data-del="${x.id}">Elimina</button></div>${x.photoFront||x.photoBack?`<div class="acts">${x.photoFront?`<button class="btn ghost" data-ph="${x.id}|F">Foto fronte</button>`:''}${x.photoBack?`<button class="btn ghost" data-ph="${x.id}|B">Foto retro</button>`:''}</div>`:''}${x.notes?`<div class="meta">${esc(x.notes)}</div>`:''}${extraMeta(x)}`).join('')}</div></div>`}
 
 /* ---------- Aggiungi ---------- */
@@ -634,15 +642,16 @@ async function renderLocal(q,st,box,useF){
   const everything=await dbAll();
   boxKids={};everything.forEach(x=>{if(x.boxId)(boxKids[x.boxId]??=[]).push(x.title)});
   boxCache=everything.filter(x=>x.isBox).sort((a,b)=>a.title.localeCompare(b.title,'it'));
+  if(useF){const tg=$('#bTogAll');tg.style.display=boxCache.length?'':'none';tg.textContent=boxCache.every(b=>boxState[b.id])?'Comprimi tutti':'Espandi tutti'}
   if(useF)fillFilters(everything);
   const F=useF?{fmt:$('#fF').value,shelf:$('#fS').value,type:$('#fT').value,genre:$('#fG').value,coll:$('#fC').value,ord:$('#fO').value}:{ord:'title'};
   const dk=f=>(f.kind||'movie')+'|'+f.tmdbId+'|'+f.format,dn={};
   everything.forEach(f=>{if(!f.isBox&&!f.wish&&f.tmdbId)dn[dk(f)]=(dn[dk(f)]||0)+1});
-  const typeOk=f=>({sealed:f.sealed,steel:f.steelbook,num:f.numbered,box:f.isBox,inbox:!!f.boxId,tv:f.kind==='tv',wish:f.wish,lent:!!f.lentTo,dup:!f.isBox&&!f.wish&&dn[dk(f)]>1}[F.type]??true);
+  const typeOk=f=>({sealed:!!f.sealed,steel:!!f.steelbook,num:!!f.numbered,box:!!f.isBox,inbox:!!f.boxId,tv:f.kind==='tv',wish:!!f.wish,lent:!!f.lentTo,dup:!f.isBox&&!f.wish&&dn[dk(f)]>1}[F.type]??true);
   const pass=f=>!useF||((!F.fmt||f.format===F.fmt)&&(!F.shelf||(F.shelf==='none'?!f.shelf:String(f.shelf)===F.shelf))&&(!F.genre||(f.genres||[]).includes(F.genre))&&(!F.coll||(F.coll==='none'?!f.collana:f.collana===F.coll))&&(!F.type||typeOk(f)));
   const all=everything.filter(pass).sort((a,b)=>a.title.localeCompare(b.title,'it'));
-  const groups={};all.forEach(f=>(groups[f.isBox?'box'+f.id:(f.kind||'movie')+(f.tmdbId||f.title+f.year)]??=[]).push(f));
-  const n=q.toLowerCase();
+  const groups={};all.forEach(f=>(groups[f.isBox?'box'+f.id:(f.boxId?'in'+f.boxId+'|':'')+(f.kind||'movie')+(f.tmdbId||f.title+f.year)]??=[]).push(f));
+  const n=q.toLowerCase();forceOpen=!!n; /* con una ricerca aperta mostro i film dentro i cofanetti */
   const list=Object.values(groups).filter(g=>!n||g.some(f=>[f.title,f.original,f.director,f.year,f.cast,FORMATS[f.format],f.notes,f.ean,f.boxTitle,f.collana,f.edition,f.hdr,f.audio,f.langs,f.lentTo?'prestato '+f.lentTo:'',f.wish?'da acquistare':'',f.sealed?'sigillato':'',f.shelf?'scaffale '+f.shelf:'',f.steelbook?'steelbook':'',f.numbered?'numerata '+numStr(f):''].join(' ').toLowerCase().includes(n)));
   const cmp={title:(a,b)=>0,year:(a,b)=>(parseInt(b[0].year)||0)-(parseInt(a[0].year)||0),
     added:(a,b)=>Math.max(...b.map(x=>x.added||0))-Math.max(...a.map(x=>x.added||0)),
@@ -650,7 +659,13 @@ async function renderLocal(q,st,box,useF){
   list.sort((a,b)=>cmp(a,b)||a[0].title.localeCompare(b[0].title,'it'));
   const own=all.filter(x=>!x.wish).length,wn=all.length-own,flt=useF&&(F.fmt||F.shelf||F.type||F.genre||F.coll);
   st.textContent=`${list.length} titoli · ${own} dischi`+(wn?` · ${wn} da acquistare`:'')+((n||flt)?' (filtrati)':'');
-  box.innerHTML=list.length?list.map(cardLocal).join(''):'<div class="meta">Nessun film trovato.</div>';
+  const bIds=new Set(list.filter(g=>g[0].isBox).map(g=>String(g[0].id))),kidsOf={},top=[];
+  list.forEach(g=>{const bid=g[0].boxId;if(bid&&bIds.has(String(bid)))(kidsOf[bid]??=[]).push(g);else top.push(g)});
+  const yr=g=>parseInt(g[0].year)||9999;
+  const one=g=>{const f=g[0];if(!f.isBox)return cardLocal(g);
+    const ks=(kidsOf[f.id]||[]).sort((a,b)=>yr(a)-yr(b)||a[0].title.localeCompare(b[0].title,'it'));
+    return `<div class="boxwrap">${cardLocal(g)}${ks.length?`<div class="kids" style="display:${boxOpen(f.id)?'block':'none'}">${ks.map(cardLocal).join('')}</div>`:''}</div>`};
+  box.innerHTML=top.length?top.map(one).join(''):'<div class="meta">Nessun film trovato.</div>';
   hydrate(box)}
 const runList=()=>renderLocal($('#q3').value.trim(),$('#st3'),$('#res3'),true);
 $('#q3').oninput=runList;['fF','fS','fT','fG','fC','fO'].forEach(i=>$('#'+i).onchange=runList);
@@ -671,6 +686,8 @@ async function runFind(){
   }
 }
 async function localActions(e){const d=e.target.dataset;
+  if(d.tog){const w=e.target.closest('.boxwrap'),k=w&&w.querySelector('.kids');
+    if(k){const op=k.style.display==='none';k.style.display=op?'block':'none';e.target.textContent=(op?'▾ ':'▸ ')+e.target.textContent.slice(2);boxState[d.tog]=op;saveBox()}return}
   if(d.ph){const [pid,k]=d.ph.split('|');const f=(await dbAll()).find(x=>x.id==pid);const src=f&&(k==='F'?f.photoFront:f.photoBack);if(src)zoom(src);return}
   if(d.add){doAdd(+d.add,'',true,e.target,d.kind||'movie');return}
   if(d.del){const rec=(await dbAll()).find(x=>x.id==d.del);
@@ -684,6 +701,7 @@ async function localActions(e){const d=e.target.dataset;
     if(r){Object.assign(f,{format:r.format,sealed:r.sealed,shelf:r.shelf,collana:r.collana,steelbook:r.steelbook,numbered:r.numbered,numNo:r.numNo,numTot:r.numTot,photoFront:r.photoFront,photoBack:r.photoBack,price:r.price,value:r.value,buyDate:r.buyDate,hdr:r.hdr,region:r.region,audio:r.audio,langs:r.langs,lentTo:r.lentTo,wish:r.wish,edition:r.edition,ean:r.ean,notes:r.notes,year:r.year});if(r.title)f.title=r.title;
     if(!f.isBox){f.boxId=r.boxId||'';f.boxTitle=(boxCache.find(x=>x.id==r.boxId)||{}).title||''}
     await dbPut(f);if(f.isBox)for(const k of (await dbAll()).filter(x=>x.boxId==f.id)){k.boxTitle=f.title;await dbPut(k)}toast('Salvato');refresh()}}}
+$('#bTogAll').onclick=()=>{const cl=boxCache.some(b=>!boxState[b.id]);boxCache.forEach(b=>boxState[b.id]=cl);saveBox();runList()};
 $('#res2').onclick=localActions;$('#res3').onclick=localActions;
 
 /* ---------- Backup ---------- */
