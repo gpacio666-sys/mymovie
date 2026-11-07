@@ -128,6 +128,7 @@ input[type=date],#sbox select{width:100%;padding:12px;border-radius:12px;border:
 .reel{width:48px;height:48px;border-radius:12px}
 .phbox{height:116px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:8px;cursor:default}.phb2{display:flex;gap:6px}.btn.sm{padding:6px 10px;font-size:13px;background:#ffffffd9;color:#0d1626;border:1px solid var(--line)}
 .tag.co{background:#0f766e;color:#fff}
+#cTabs button{font-size:14px}
 </style>
 </head>
 <body>
@@ -746,22 +747,33 @@ $('#bSt').onclick=async()=>{
 $('#gear').onclick=async()=>{
   const used=Math.max(0,...(await dbAll()).map(f=>parseInt(f.shelf)||0));
   let lastAt='';try{lastAt=localStorage.getItem('lastFileAt')||''}catch(e){}
-  $('#sbox').innerHTML=`<h3 style="margin:0 0 6px">Impostazioni</h3>
-  <div class="meta">Chiave TMDb (vuota = usa il Worker, che la custodisce)</div><input type="text" id="cT" value="${esc(CFG.tmdb)}" autocapitalize="off" autocomplete="off" spellcheck="false">
-  <div class="meta" style="margin-top:12px">Indirizzo Cloudflare Worker</div><input type="text" id="cW" value="${esc(CFG.worker)}" placeholder="https://…workers.dev" autocapitalize="off" autocomplete="off" spellcheck="false">
-  <div class="meta" style="margin-top:12px">Numero di scaffali</div><input type="number" id="cS" min="${Math.max(1,used)}" max="99" inputmode="numeric" value="${CFG.shelves}">
-  <div class="meta">Scaffale più alto in uso: ${used||'nessuno'} (non puoi scendere sotto questo numero)</div>
-  <div class="meta" style="margin-top:12px">Collane (si usano nella scheda del disco)</div>
-  <div id="cList"></div>
-  <div class="row2"><input type="text" id="cNew" placeholder="Nuova collana"><button class="btn" id="cAdd" style="flex:0 0 auto">Aggiungi</button></div>
-  <div class="meta" style="margin-top:12px">Frequenza del backup</div>
-  <select id="cF">${Object.entries(FREQ).map(([k,v])=>`<option value="${k}" ${CFG.freq===k?'selected':''}>${v[0].toUpperCase()+v.slice(1)}</option>`).join('')}</select>
-  <div class="meta" style="margin-top:12px">Google Drive: ID client OAuth (facoltativo)</div><input type="text" id="cG" value="${esc(CFG.gClient||'')}" placeholder="xxxx.apps.googleusercontent.com" autocapitalize="off" autocomplete="off" spellcheck="false">
-  <div class="meta" style="margin-top:12px">Versioni da conservare su Drive (ogni backup è un file nuovo)</div><input type="number" id="cK" min="1" max="60" inputmode="numeric" value="${CFG.driveKeep||10}">
-  <div class="meta" style="margin-top:8px">${lastAt?'Ultimo backup salvato: '+esc(lastAt):'Nessun backup salvato finora'}</div>
-  <div class="row2"><button class="btn" id="cB">Salva sul telefono</button>${CFG.gClient?'<button class="btn" id="cD">Salva su Google Drive</button>':''}</div>
+  $('#sbox').innerHTML=`<h3 style="margin:0 0 10px">Impostazioni</h3>
+  <div class="seg" id="cTabs"><button data-p="a" class="on">Archivio</button><button data-p="b">Backup</button><button data-p="s">Sistema</button></div>
+  <div data-pane="a">
+    <div class="meta">Numero di scaffali</div><input type="number" id="cS" min="${Math.max(1,used)}" max="99" inputmode="numeric" value="${CFG.shelves}">
+    <div class="meta">Scaffale più alto in uso: ${used||'nessuno'} (non puoi scendere sotto questo numero)</div>
+    <div class="meta" style="margin-top:14px">Collane (si usano nella scheda del disco)</div>
+    <div id="cList"></div>
+    <div class="row2"><input type="text" id="cNew" placeholder="Nuova collana"><button class="btn" id="cAdd" style="flex:0 0 auto">Aggiungi</button></div>
+  </div>
+  <div data-pane="b" style="display:none">
+    <div class="meta">Frequenza del backup</div>
+    <select id="cF">${Object.entries(FREQ).map(([k,v])=>`<option value="${k}" ${CFG.freq===k?'selected':''}>${v[0].toUpperCase()+v.slice(1)}</option>`).join('')}</select>
+    <div class="meta" style="margin-top:6px">Ogni periodo l'app salva da sola una copia interna (le ultime 14) e ti ricorda di salvare il file.</div>
+    <div class="meta" style="margin-top:14px">Versioni da conservare su Drive (ogni backup è un file nuovo)</div><input type="number" id="cK" min="1" max="60" inputmode="numeric" value="${CFG.driveKeep||10}">
+    <div class="meta" style="margin-top:14px">${lastAt?'Ultimo backup salvato: '+esc(lastAt):'Nessun backup salvato finora'}</div>
+    <div class="row2"><button class="btn" id="cB">Salva sul telefono</button>${CFG.gClient?'<button class="btn" id="cD">Salva su Google Drive</button>':''}</div>
+    ${CFG.gClient?'':'<div class="meta" style="margin-top:8px">Per salvare su Google Drive inserisci l\'ID client nella scheda Sistema.</div>'}
+  </div>
+  <div data-pane="s" style="display:none">
+    <div class="meta">Chiave TMDb (vuota = usa il Worker, che la custodisce)</div><input type="text" id="cT" value="${esc(CFG.tmdb)}" autocapitalize="off" autocomplete="off" spellcheck="false">
+    <div class="meta" style="margin-top:12px">Indirizzo Cloudflare Worker</div><input type="text" id="cW" value="${esc(CFG.worker)}" placeholder="https://…workers.dev" autocapitalize="off" autocomplete="off" spellcheck="false">
+    <div class="meta" style="margin-top:12px">Google Drive: ID client OAuth (facoltativo)</div><input type="text" id="cG" value="${esc(CFG.gClient||'')}" placeholder="xxxx.apps.googleusercontent.com" autocapitalize="off" autocomplete="off" spellcheck="false">
+  </div>
   <div class="row" style="margin-top:14px"><button class="btn ghost" id="cX" style="flex:1">Annulla</button><button class="btn" id="cOK" style="flex:2">Salva</button></div>`;
   $('#sheet').classList.remove('hide');
+  const showPane=p=>{document.querySelectorAll('[data-pane]').forEach(x=>x.style.display=x.dataset.pane===p?'':'none');document.querySelectorAll('#cTabs button').forEach(b=>b.classList.toggle('on',b.dataset.p===p))};
+  $('#cTabs').onclick=e=>{if(e.target.dataset.p)showPane(e.target.dataset.p)};
   const allRecs=await dbAll();let rows=CFG.collane.map(n=>({old:n,name:n}));
   const drawCols=()=>{$('#cList').innerHTML=rows.map((r,i)=>`<div class="row2" style="margin-top:6px"><input type="text" data-ci="${i}" value="${esc(r.name)}"><button class="btn del" style="flex:0 0 44px;padding:0" data-cd="${i}" aria-label="Elimina">×</button></div>`).join('')||'<div class="meta">Nessuna collana.</div>'};
   drawCols();
@@ -775,11 +787,11 @@ $('#gear').onclick=async()=>{
   if($('#cD'))$('#cD').onclick=async()=>{$('#sheet').classList.add('hide');await snapNow();backupToDrive()};
   $('#cOK').onclick=async()=>{
     const n=parseInt($('#cS').value,10),t=$('#cT').value.trim(),w=$('#cW').value.trim().replace(/\/+$/,'');
-    if(!t&&!w){toast('Serve la chiave TMDb oppure l\'indirizzo del Worker');return}
-    if(!n||n<1||n>99){toast('Gli scaffali devono essere tra 1 e 99');return}
-    if(n<used){toast('Non può essere minore di '+used+': hai dischi sullo scaffale '+used);return}
+    if(!t&&!w){showPane('s');toast('Serve la chiave TMDb oppure l\'indirizzo del Worker');return}
+    if(!n||n<1||n>99){showPane('a');toast('Gli scaffali devono essere tra 1 e 99');return}
+    if(n<used){showPane('a');toast('Non può essere minore di '+used+': hai dischi sullo scaffale '+used);return}
     const names=rows.map(r=>r.name.trim());
-    if(names.some(x=>!x)||new Set(names.map(x=>x.toLowerCase())).size!==names.length){toast('Le collane devono avere un nome e non possono ripetersi');return}
+    if(names.some(x=>!x)||new Set(names.map(x=>x.toLowerCase())).size!==names.length){showPane('a');toast('Le collane devono avere un nome e non possono ripetersi');return}
     rows.forEach((r,i)=>r.name=names[i]);
     for(const f of allRecs){const c=f.collana;if(!c)continue;const r=rows.find(x=>x.old===c);
       if(!r){f.collana='';await dbPut(f)}else if(r.name!==c){f.collana=r.name;await dbPut(f)}}
