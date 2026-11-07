@@ -235,7 +235,7 @@ async function photoData(file,max=1000,q=.75){
 function zoom(src){
   $('#sbox').innerHTML=`<img src="${src}" style="width:100%;border-radius:12px"><div class="row" style="margin-top:10px"><button class="btn ghost" id="zX" style="flex:1">Chiudi</button></div>`;
   $('#sheet').classList.remove('hide');$('#zX').onclick=()=>$('#sheet').classList.add('hide')}
-let boxKids={};
+let boxKids={},boxCache=[];
 const searchTmdb=async q=>{
   const [m,c]=await Promise.all([tmdb('/search/multi',{query:q,include_adult:'false'}),tmdb('/search/collection',{query:q}).catch(()=>({results:[]}))]);
   const films=(m.results||[]).filter(r=>r.media_type==='movie'||r.media_type==='tv')
@@ -356,13 +356,14 @@ async function manualAdd(pre={}){
     price:r.price,value:r.value,buyDate:r.buyDate,hdr:r.hdr,region:r.region,audio:r.audio,langs:r.langs,lentTo:r.lentTo,wish:r.wish,
     collana:r.collana||'',notes:r.notes||'',edition:r.edition||'',seasons:''};
   const t0=Date.now();
+  if(!r.year){const m=(r.title||'').match(/^(.*?)\s*\((\d{4})\)\s*$/);if(m){r.title=m[1];r.year=m[2]}} /* "Titolo (1985)" -> titolo + anno */
   if(r.kind==='box'){
     const boxId=await dbPut({...base,isBox:true,kind:'box',title:r.title,year:r.year,ean:r.ean,photoFront:r.photoFront,photoBack:r.photoBack,added:t0});
     const lines=(r.contents||'').split('\n').map(x=>x.trim()).filter(Boolean);let i=0;
     for(const t of lines){const m=t.match(/^(.*?)\s*\((\d{4})\)\s*$/);i++;
       await dbPut({...base,kind:'movie',title:m?m[1]:t,year:m?m[2]:'',ean:'',notes:'',edition:'',numbered:false,numNo:'',numTot:'',photoFront:'',photoBack:'',price:'',value:'',buyDate:'',boxId,boxTitle:r.title,added:t0+i})}
     toast(`Cofanetto aggiunto con ${lines.length} film`)}
-  else{await dbPut({...base,kind:r.kind,title:r.title,year:r.year,ean:r.ean,photoFront:r.photoFront,photoBack:r.photoBack,added:t0});toast('Disco aggiunto a mano')}
+  else{await dbPut({...base,boxId:r.boxId||'',boxTitle:(boxCache.find(x=>x.id==r.boxId)||{}).title||'',kind:r.kind,title:r.title,year:r.year,ean:r.ean,photoFront:r.photoFront,photoBack:r.photoBack,added:t0});toast('Disco aggiunto a mano')}
   lastEan='';runList();if(where==='local')runFind()}
 $('#bMan').onclick=()=>manualAdd(manualPreset());$('#fbMan').onclick=()=>manualAdd(manualPreset());
 $('#fbGo').onclick=fbGo;$('#fbq').onkeydown=e=>{if(e.key==='Enter')fbGo()};
@@ -444,7 +445,8 @@ async function doAdd(id,ean,ask,btn,kind='movie'){
   if(owned.length&&!r.wish){const fm=[...new Set(owned.map(x=>FORMATS[x.format]))].join(', ');
     if(!confirm(owned.some(x=>x.format===f)?'Hai già questo titolo in '+FORMATS[f]+'. Aggiungerlo di nuovo (doppione)?':'Hai già questo titolo in '+fm+'. Aggiungerlo anche in '+FORMATS[f]+'?'))return}
   btn.disabled=true;
-  try{await addFromTmdb(id,ean,f,sealed,shelf,r,kind);if(!ask)lastEan='';runList()}catch(err){toast('Errore: '+err.message)}
+  try{if(r.boxId)r.boxTitle=(boxCache.find(x=>x.id==r.boxId)||{}).title||'';
+    await addFromTmdb(id,ean,f,sealed,shelf,r,kind);if(!ask)lastEan='';runList()}catch(err){toast('Errore: '+err.message)}
   btn.disabled=false}
 async function boxFlow(colId,ean,fmtHint,pre){
   const d=await tmdb('/collection/'+colId);
@@ -469,6 +471,7 @@ function sheet({head,film,withFields,withTitle,parts,manual}){return new Promise
   <select id="sSh"><option value="">—</option>${Array.from({length:Math.max(CFG.shelves,parseInt(film.shelf)||0)},(_,i)=>i+1).map(n=>`<option value="${n}" ${film.shelf==n?'selected':''}>${n}</option>`).join('')}</select>
   <div class="meta" style="margin:12px 0 4px">Collana</div>
   <select id="sCo"><option value="">—</option>${[...new Set([...CFG.collane,film.collana].filter(Boolean))].map(c=>`<option ${film.collana===c?'selected':''}>${esc(c)}</option>`).join('')}</select>
+  ${!parts&&!film.isBox&&boxCache.length?`<div class="meta" style="margin:12px 0 4px">Inserisci in un cofanetto già censito</div><select id="sBxId"><option value="">— nessuno —</option>${boxCache.map(b=>`<option value="${b.id}" ${film.boxId==b.id?'selected':''}>${esc(b.title)}${b.format?' · '+FORMATS[b.format]:''}</option>`).join('')}</select>`:''}
   <label class="chk"><input type="checkbox" id="sS" ${film.sealed?'checked':''}> Disco sigillato</label>
   <label class="chk"><input type="checkbox" id="sSb" ${film.steelbook?'checked':''}> SteelBook</label>
   <label class="chk"><input type="checkbox" id="sNm" ${film.numbered?'checked':''}> Edizione speciale numerata</label>
@@ -484,7 +487,7 @@ function sheet({head,film,withFields,withTitle,parts,manual}){return new Promise
   <input type="text" id="mT" placeholder="Prestato a…" value="${esc(film.lentTo||'')}">
   </details>
   ${parts?`<div class="meta" style="margin:12px 0 4px">Film contenuti (togli la spunta a quelli che non ci sono)</div><div id="sParts" style="max-height:200px;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:4px 10px">${parts.map(p=>`<label class="chk" style="margin:8px 0"><input type="checkbox" data-pid="${p.id}" checked> <span>${esc(p.title)} <span class="meta">${esc(p.year)}</span></span></label>`).join('')}</div>`:''}
-  ${!withFields&&!parts?'<label class="chk"><input type="checkbox" id="sBx"> Cofanetto (raccolta di più film)</label>':''}
+  ${!withFields&&!parts?'<label class="chk"><input type="checkbox" id="sBx"> Questo è un cofanetto (raccolta di più film)</label>':''}
   <div class="meta" style="margin:12px 0 4px">Foto del tuo disco (facoltative)</div>
   <div class="row" id="sPh" style="margin-bottom:0"><div class="phbox" id="phF"></div><div class="phbox" id="phB"></div></div>
   <div class="row" style="margin-top:12px"><button class="btn ghost" id="sX" style="flex:1">Annulla</button><button class="btn" id="sOK" style="flex:2">${manual?'Aggiungi':withFields?'Salva':'Aggiungi'}</button></div>`;
@@ -500,10 +503,13 @@ function sheet({head,film,withFields,withTitle,parts,manual}){return new Promise
   const close=v=>{$('#sheet').classList.add('hide');res(v)};
   $('#sF').onclick=e=>{const k=e.target.dataset.f;if(!k)return;f=k;[...$('#sF').children].forEach(x=>x.classList.toggle('on',x.dataset.f===k))};
   $('#sX').onclick=()=>close(null);
+  if($('#sBxId'))$('#sBxId').onchange=()=>{const b=boxCache.find(x=>x.id==$('#sBxId').value);if(!b)return; /* il disco eredita i dati del cofanetto scelto */
+    f=b.format||f;[...$('#sF').children].forEach(x=>x.classList.toggle('on',x.dataset.f===f));
+    $('#sSh').value=b.shelf||'';$('#sCo').value=b.collana||'';$('#sS').checked=!!b.sealed;$('#sSb').checked=!!b.steelbook};
   if(manual)$('#mK').onchange=()=>{$('#mC').style.display=$('#mK').value==='box'?'block':'none'};
   $('#sNm').onchange=()=>{$('#sNb').style.display=$('#sNm').checked?'flex':'none'};
   $('#sOK').onclick=()=>{if(!f){toast('Scegli il supporto');return}if(manual&&!$('#sT').value.trim()){toast('Scrivi il titolo');return}
-    close({format:f,sealed:$('#sS').checked,shelf:$('#sSh').value,collana:$('#sCo')?.value||'',price:$('#mP').value.trim(),value:$('#mV').value.trim(),buyDate:$('#mD').value,hdr:$('#mH').value,region:$('#mR').value,audio:$('#mA').value.trim(),langs:$('#mL').value.trim(),lentTo:$('#mT').value.trim(),wish:$('#mW').checked,photoFront:pf,photoBack:pb,steelbook:$('#sSb').checked,numbered:$('#sNm').checked,numNo:$('#sNn').value.replace(/\D/g,''),numTot:$('#sNt').value.replace(/\D/g,''),box:!!$('#sBx')?.checked,edition:$('#mE')?.value.trim(),ean:$('#mN')?.value.trim(),kind:$('#mK')?.value,contents:$('#mC')?.value||'',parts:[...document.querySelectorAll('#sParts input:checked')].map(i=>+i.dataset.pid),title:(withFields||withTitle)?$('#sT').value.trim():'',year:withFields?$('#sY').value.trim():'',notes:withFields?$('#sN').value.trim():''})};
+    close({format:f,sealed:$('#sS').checked,shelf:$('#sSh').value,collana:$('#sCo')?.value||'',boxId:+($('#sBxId')?.value)||'',price:$('#mP').value.trim(),value:$('#mV').value.trim(),buyDate:$('#mD').value,hdr:$('#mH').value,region:$('#mR').value,audio:$('#mA').value.trim(),langs:$('#mL').value.trim(),lentTo:$('#mT').value.trim(),wish:$('#mW').checked,photoFront:pf,photoBack:pb,steelbook:$('#sSb').checked,numbered:$('#sNm').checked,numNo:$('#sNn').value.replace(/\D/g,''),numTot:$('#sNt').value.replace(/\D/g,''),box:!!$('#sBx')?.checked,edition:$('#mE')?.value.trim(),ean:$('#mN')?.value.trim(),kind:$('#mK')?.value,contents:$('#mC')?.value||'',parts:[...document.querySelectorAll('#sParts input:checked')].map(i=>+i.dataset.pid),title:(withFields||withTitle)?$('#sT').value.trim():'',year:withFields?$('#sY').value.trim():'',notes:withFields?$('#sN').value.trim():''})};
 })}
 
 /* Codice a barre da foto */
@@ -627,6 +633,7 @@ function fillFilters(all){
 async function renderLocal(q,st,box,useF){
   const everything=await dbAll();
   boxKids={};everything.forEach(x=>{if(x.boxId)(boxKids[x.boxId]??=[]).push(x.title)});
+  boxCache=everything.filter(x=>x.isBox).sort((a,b)=>a.title.localeCompare(b.title,'it'));
   if(useF)fillFilters(everything);
   const F=useF?{fmt:$('#fF').value,shelf:$('#fS').value,type:$('#fT').value,genre:$('#fG').value,coll:$('#fC').value,ord:$('#fO').value}:{ord:'title'};
   const dk=f=>(f.kind||'movie')+'|'+f.tmdbId+'|'+f.format,dn={};
@@ -674,7 +681,9 @@ async function localActions(e){const d=e.target.dataset;
     await dbDel(+d.del);refresh()}
   if(d.edit){const f=(await dbAll()).find(x=>x.id==d.edit);
     const r=await sheet({head:'Modifica',film:f,withFields:true});
-    if(r){Object.assign(f,{format:r.format,sealed:r.sealed,shelf:r.shelf,collana:r.collana,steelbook:r.steelbook,numbered:r.numbered,numNo:r.numNo,numTot:r.numTot,photoFront:r.photoFront,photoBack:r.photoBack,price:r.price,value:r.value,buyDate:r.buyDate,hdr:r.hdr,region:r.region,audio:r.audio,langs:r.langs,lentTo:r.lentTo,wish:r.wish,edition:r.edition,ean:r.ean,notes:r.notes,year:r.year});if(r.title)f.title=r.title;await dbPut(f);if(f.isBox)for(const k of (await dbAll()).filter(x=>x.boxId==f.id)){k.boxTitle=f.title;await dbPut(k)}toast('Salvato');refresh()}}}
+    if(r){Object.assign(f,{format:r.format,sealed:r.sealed,shelf:r.shelf,collana:r.collana,steelbook:r.steelbook,numbered:r.numbered,numNo:r.numNo,numTot:r.numTot,photoFront:r.photoFront,photoBack:r.photoBack,price:r.price,value:r.value,buyDate:r.buyDate,hdr:r.hdr,region:r.region,audio:r.audio,langs:r.langs,lentTo:r.lentTo,wish:r.wish,edition:r.edition,ean:r.ean,notes:r.notes,year:r.year});if(r.title)f.title=r.title;
+    if(!f.isBox){f.boxId=r.boxId||'';f.boxTitle=(boxCache.find(x=>x.id==r.boxId)||{}).title||''}
+    await dbPut(f);if(f.isBox)for(const k of (await dbAll()).filter(x=>x.boxId==f.id)){k.boxTitle=f.title;await dbPut(k)}toast('Salvato');refresh()}}}
 $('#res2').onclick=localActions;$('#res3').onclick=localActions;
 
 /* ---------- Backup ---------- */
